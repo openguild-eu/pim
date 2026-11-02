@@ -31,39 +31,31 @@ assumes the sibling `blueprints/attributes.md` defines, in
   value_integer, value_decimal, value_boolean, value_date, timestamps`,
   unique `[product_id, attribute_id]`).
 
-**This namespace (`Modules\Attributes\Models\*`) is an assumption, not
-verified against the sibling document** — it was written in parallel and
-this agent could not read it. Confirm the namespace when reconciling the two
-blueprints; every `use Modules\Attributes\Models\...;` statement below may
-need a namespace find-and-replace if `attributes.md` lands differently.
+**Namespace confirmed** during the cross-blueprint consistency pass:
+`Modules\Attributes\Models\*` matches `attributes.md` exactly.
 
-**Open question flagged for reconciliation with `attributes.md`**: the
-`AttributeValue` schema has five `value_*` columns but `Attribute::type` has
-seven cases. This document's canonical type→column mapping (used
-identically for both reading and writing — see `PersistsAttributeValues`
-trait below) is:
+**Resolved, cross-blueprint-ratified** (settled jointly with
+`attributes.md`, which carries the identical table as the canonical
+definition — this document must stay in lockstep with it, not redecide it).
+The `AttributeValue` schema has five `value_*` columns but `Attribute::type`
+has seven cases; the type→column mapping (used identically for both reading
+and writing — see `PersistsAttributeValues` trait below) is:
 
 | `Attribute::type` | Column         | Note                                      |
 | ------------------ | -------------- | ------------------------------------------ |
 | `text`              | `value_text`     |                                             |
 | `textarea`          | `value_text`     |                                             |
 | `select`            | `value_text`     | stores the selected option's string value  |
-| `multiselect`       | `value_text`     | **JSON-encoded** array of selected values — flagged assumption, see below |
+| `multiselect`       | `value_text`     | **JSON-encoded** array of selected values (e.g. `["red","blue"]`) — the only multi-value case; decode with `json_decode($value, true)` when reading |
 | `number`            | `value_decimal`  | handles both integer and fractional input  |
 | `boolean`           | `value_boolean`  |                                             |
 | `date`              | `value_date`     |                                             |
 
-`value_integer` is **never written by this mapping** — there is no `type`
-case that maps to it given the fixed five-column/seven-type shape as
-specified. Flag this to the `attributes.md` author; if they intended
-`value_integer` for `number`, update both this table and the
-`PersistsAttributeValues::valueColumns()`/`hydrateValue()` methods below
-together (same canonical rule, both directions).
-
-`multiselect` storing a JSON-encoded array into `value_text` is also an
-assumption — `AttributeValue` has no array-capable column in the locked
-schema. If `attributes.md` adds one, update the mapping table and both trait
-methods together.
+`value_integer` is **deliberately never written by this mapping** — there's
+no `type` case distinguishing "whole number" from "decimal number" (just one
+`number` case), so `value_decimal` alone covers it. The column stays in the
+schema (dropping it is an actual migration change, out of scope here) but
+is reserved/unused by this round's Attribute types.
 
 ## Commands
 
@@ -352,7 +344,7 @@ Resource: ProductResource
   Navigation:
     Group: Catalog
     Icon: Filament\Support\Icons\Heroicon::OutlinedCube
-    Sort: 2
+    Sort: 4
 ```
 
 (`Heroicon::OutlinedCube` confirmed to exist in the installed
@@ -718,8 +710,8 @@ trait PersistsAttributeValues
     /**
      * Canonical type -> value_* column mapping (write direction). Keep in
      * sync with `hydrateValue()` below — see the Context section's mapping
-     * table and its flagged open questions (`value_integer` unused,
-     * `multiselect` JSON-encoded into `value_text`).
+     * table (ratified jointly with attributes.md: `value_integer` is
+     * deliberately unused, `multiselect` is JSON-encoded into `value_text`).
      *
      * @return array<string, mixed>
      */
@@ -1109,19 +1101,20 @@ outcomes purely from the implementation's own calculator/query.
 
 ## Summary of flagged assumptions / open questions for reconciliation
 
-1. **`Modules\Attributes\Models\*` namespace** — assumed, not verified
-   against `attributes.md` (written in parallel; not readable from here).
-2. **`value_integer` column** — unused by this blueprint's type→column
-   mapping, since `Attribute::type` has 7 cases and `AttributeValue` has 5
-   `value_*` columns. Possible the `attributes.md` author intended it for
-   `number` instead of `value_decimal` — reconcile and update both
-   `valueColumns()`/`hydrateValue()` together if so.
-3. **`multiselect` storage** — JSON-encoded into `value_text`, since no
-   array-capable column exists on `AttributeValue` as specified. Flag for
-   the `attributes.md` author.
-4. **`attribute_set_id` FK on delete** — `nullOnDelete()`, not specified by
-   the locked design. Confirm against whatever deletion behavior
-   `attributes.md` defines for `AttributeSet`.
+1. ~~`Modules\Attributes\Models\*` namespace~~ — **confirmed** during the
+   cross-blueprint consistency pass: matches `attributes.md` exactly
+   (`AttributeSet`, `Attribute`, `AttributeValue` all under that namespace).
+2. ~~`value_integer` column unused~~ — **resolved**: ratified in both this
+   document and `attributes.md` as deliberately reserved/unused;
+   `value_decimal` is canonical for `number`.
+3. ~~`multiselect` storage~~ — **resolved**: ratified in both documents as
+   JSON-encoded into `value_text`, the one deliberate multi-value exception
+   to the typed-column scheme.
+4. **`attribute_set_id` FK on delete** — `nullOnDelete()`, this document's
+   own call. Checked against `attributes.md` during the consistency pass:
+   it defines no competing rule for this FK (it only governs the
+   `attribute_set_attributes` pivot's own FKs), so there's no conflict —
+   `nullOnDelete()` stands.
 5. **`category_product` FK on delete** — `cascadeOnDelete()` on both
    sides, a housekeeping default for this blueprint's own join table; does
    not alter Category's or Product's own deletion rules.

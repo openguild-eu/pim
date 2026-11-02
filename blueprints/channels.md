@@ -302,7 +302,7 @@ Resource: ChannelResource
   Navigation:
     Group: Catalog
     Icon: Filament\Support\Icons\Heroicon::OutlinedMegaphone
-    Sort: 3
+    Sort: 5
 ```
 
 **Form** (used by Create and Edit pages — `Columns: 1`):

@@ -392,20 +392,22 @@ and History page), i.e. inside `app-modules/products/src/Filament/Resources/Prod
 'up-sells' => ManageUpSellProducts::route('/{record}/up-sells')
 ```
 
-Add to `ProductResource::getRecordSubNavigation()` (alongside whatever Edit/
-History/other-sibling-blueprint entries are already there by the time this
-is applied — append, don't replace):
+Add to `ProductResource::getRecordSubNavigation()` (append to the array
+`products.md` defines, don't replace it). **Resolved** (confirmed against
+the other five sibling blueprints during the consistency pass — Media adds
+a form field/table column, not a page; Channels adds a `RelationManager`
+tab via `getRelations()`, not a `getRecordSubNavigation()` entry; neither
+touches this array), the final order is:
 
 ```php
 public static function getRecordSubNavigation(Page $page): array
 {
     return $page->generateNavigationItems([
         EditProduct::class,
-        // ... entries added by other sibling blueprints (Media, Channels) ...
         ManageRelatedProducts::class,
         ManageCrossSellProducts::class,
         ManageUpSellProducts::class,
-        ManageProductActivities::class, // History — from the Products blueprint; keep last
+        ManageProductActivities::class, // History — from the Products blueprint; keep last, same convention Category uses
     ]);
 }
 ```
@@ -680,9 +682,8 @@ Category's own test suite already relies on.
    `Product` `SoftDeletes` (consistent with `Category`'s pattern) this is
    moot for normal deletes and only matters for `forceDelete()` — flagging
    rather than guessing.
-2. The exact final ordering of tabs in `getRecordSubNavigation()` (where
-   "Related Products"/"Cross-sells"/"Up-sells" sit relative to whatever
-   Media/Channels add) is left unspecified here since those blueprints are
-   being written in parallel and their tab additions aren't known; the
-   snippet above shows them appended before History, which should be
-   reconciled by whoever merges all the sibling patches.
+2. ~~Final tab ordering~~ — **resolved** during the cross-blueprint
+   consistency pass: Media and Channels don't add `getRecordSubNavigation()`
+   entries at all (Media is a form field/column, Channels is a
+   `RelationManager` tab via `getRelations()`), so the only entries are
+   Edit, the three Relations tabs, then History — exactly as shown above.

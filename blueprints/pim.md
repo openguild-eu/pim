@@ -136,21 +136,30 @@ Resource only. Child/line-item models don't get their own tab.
 
 ## Module Blueprints
 
-Each PIM domain is designed and documented here as it's scoped out —
-nothing is listed yet. Candidate domains to work through together:
+Each PIM domain is designed and documented here as it's scoped out.
+Candidate domains to work through together:
 
-- **Products & SKUs** — simple vs. configurable/variant products
-- **Attributes & Attribute Sets/Families** — flexible per-category product
-  data
 - [category.md](category.md) — tree-structured categories (adjacency list,
   unlimited depth) with drag-reorder and a deferred product-assignment pivot
-- **Channels & Locales** — multi-channel publishing, per-locale/per-channel
-  content overrides
-- **Media/DAM** — product images/assets, reuse across products
-- **Relations** — related/cross-sell/up-sell products, variant grouping
-- **Import/Export** — feed ingestion, channel export formats
+- [attributes.md](attributes.md) — EAV attributes + attribute sets
+  (`AttributeSet`/`Attribute`/`AttributeValue`), the typed-column
+  type→value_* mapping shared with products.md, no per-category defaults
+- [products.md](products.md) — simple products only (variants deferred);
+  `attribute_set_id` + the dynamic per-attribute-set form section; category
+  assignment via `category_product`
+- [media.md](media.md) — `spatie/laravel-medialibrary` +
+  `filament/spatie-laravel-media-library-plugin` integration on Product,
+  no new schema of its own
+- [channels.md](channels.md) — `Channel` model + `channel_product`
+  assignment pivot (`is_published`/`published_at`) on Product
+- [relations.md](relations.md) — `product_relations` pivot-model powering
+  three directional relationship types (related/cross-sell/up-sell) as
+  three Product sub-navigation tabs
+- [product-import-export.md](product-import-export.md) — CSV/XLSX
+  import (upsert by SKU) and export for Products, using Filament's
+  already-installed import/export actions (no new dependency)
 - **Completeness/workflow** — draft → ready → published states, data
-  quality scoring
+  quality scoring (not yet designed)
 
 As each is designed, add it here as `[module.md](module.md) — one-line
 description`, following the Model → Resource (Form/Table/Actions) →

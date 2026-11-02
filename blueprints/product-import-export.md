@@ -26,16 +26,14 @@ their locked shape as given, without redesigning it:
   `Product belongsTo AttributeSet` via `attribute_set_id`, method
   `attributeSet()`.
 
-**Assumption inherited unmodified from the Products blueprint** (stated here
-only because this module's correctness depends on it, not because this
-document is deciding it): `Product` uses
+**Confirmed** during the cross-blueprint consistency pass (this document
+originally stated it as an unverified assumption, since it was written in
+parallel without sight of `products.md`): `Product` does use
 `App\Models\Concerns\BelongsToCatalog`, the same way `Category` does per
 `blueprints/category.md` — i.e. `Product` carries `App\Models\Scopes\CatalogScope`
 as a global scope keyed on `Filament::getTenant()`. Every tenant-isolation
 claim below (in `resolveRecord()`, new-record creation, and the Exporter's
-base query) rests on this. If the Products blueprint gives `Product` a
-different tenancy mechanism, this document's Authorization section needs
-re-grounding — flag that back rather than silently reconciling it.
+base query) rests on this, and now stands confirmed rather than assumed.
 
 ### Dependency check (confirmed, not assumed)
 

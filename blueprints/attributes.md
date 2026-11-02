@@ -340,6 +340,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Attributes\Database\Factories\AttributeFactory;
 use Modules\Attributes\Enums\AttributeType;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
@@ -387,6 +388,19 @@ class Attribute extends Model
     {
         return $this->belongsToMany(AttributeSet::class, 'attribute_set_attributes')
             ->withPivot(['position', 'is_required']);
+    }
+
+    /**
+     * Forward reference to AttributeValue, added purely so the
+     * AttributeResource form can check `$record->values()->exists()`
+     * before allowing `type` to change (see the Resources section) —
+     * AttributeValue itself belongs to the Products blueprint's domain.
+     *
+     * @return HasMany<AttributeValue, $this>
+     */
+    public function values(): HasMany
+    {
+        return $this->hasMany(AttributeValue::class);
     }
 
     public function getActivitylogOptions(): LogOptions
@@ -533,15 +547,33 @@ class AttributeValue extends Model
 **No Filament Resource for `AttributeValue`.** Do not scaffold
 `AttributeValueResource`, a page, or a RelationManager for it in this
 module. Only one of the five `value_*` columns is ever populated on a given
-row — whichever matches that row's `attribute.type` (`text`/`textarea` →
-`value_text`, `number` → `value_integer` or `value_decimal`, `boolean` →
-`value_boolean`, `date` → `value_date`, `select`/`multiselect` →
-`value_text`, storing the selected option's `value`). This typed-column EAV
-shape (rather than one JSON/text blob on `Product`) is exactly why this
-architecture was chosen — it keeps SQL-level filtering and sorting on
-attribute values possible. `AttributeValue` rows are edited inline on
-`Product`'s own form, which is the Products blueprint's responsibility. If
-you're implementing this module and don't see that UI anywhere, that's
+row — whichever matches that row's `attribute.type`, per this **canonical,
+cross-blueprint-ratified mapping** (settled jointly with `products.md`,
+which is the only place these rows are actually written/read — this table
+is the single source of truth for both documents):
+
+| `Attribute::type` | Column          | Note                                                           |
+| ------------------ | --------------- | --------------------------------------------------------------- |
+| `text`              | `value_text`    |                                                                   |
+| `textarea`          | `value_text`    |                                                                   |
+| `select`            | `value_text`    | the selected option's string value                               |
+| `multiselect`       | `value_text`    | **JSON-encoded** array of selected values (e.g. `["red","blue"]`) — the only multi-value case; decode with `json_decode($value, true)` when reading |
+| `number`            | `value_decimal` | handles both whole and fractional input — `decimal(10,2)` represents integers fine |
+| `boolean`           | `value_boolean` |                                                                   |
+| `date`              | `value_date`    |                                                                   |
+
+`value_integer` is **deliberately never written** by this mapping — there's
+no `type` case that distinguishes "whole number" from "decimal number"
+(just one `number` case), so `value_decimal` alone covers it. The column
+stays in the schema (dropping it would be an actual migration change, not a
+documentation fix) but is reserved/unused by this round's Attribute types.
+This typed-column EAV shape (rather than one JSON/text blob on `Product`) is
+exactly why this architecture was chosen — it keeps SQL-level filtering and
+sorting on attribute values possible for every type except the
+`multiselect` edge case, which necessarily trades that off for being able
+to hold more than one value at all. `AttributeValue` rows are edited inline
+on `Product`'s own form, which is the Products blueprint's responsibility.
+If you're implementing this module and don't see that UI anywhere, that's
 correct — it doesn't belong here.
 
 ## Resources
@@ -592,6 +624,19 @@ Field: type
     ->options(Modules\Attributes\Enums\AttributeType::class)
     ->native(false)
     ->live()
+    ->disabled(fn (?Attribute $record): bool => $record && $record->values()->exists())
+    ->helperText(fn (?Attribute $record): ?string => ($record && $record->values()->exists())
+        ? 'Cannot change the type once a product has a value stored for this attribute — its existing values would land in the wrong value_* column (see attributes.md\'s type→column mapping). Create a new Attribute instead.'
+        : null)
+  Note (resolved during the cross-blueprint consistency pass — this was
+  flagged as an open question): changing an Attribute's `type` after
+  `AttributeValue` rows reference it would silently strand existing data in
+  the wrong `value_*` column (the Products form reads/writes based on the
+  *current* type). Blocked at the form level via `->disabled()`, matching
+  this project's existing preference for guarding before a write rather
+  than cleaning up after one. Requires a `values(): HasMany` relationship
+  on `Attribute` (`hasMany(AttributeValue::class)`) purely for this
+  existence check — add it to the model body above.
 
 Field: options
   Component: Filament\Forms\Components\Repeater
