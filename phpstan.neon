@@ -1,0 +1,44 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/nesbot/carbon/extension.neon
+
+parameters:
+    level: 8
+
+    paths:
+        - app
+        - app-modules
+        - bootstrap
+        - database
+        - routes
+
+    excludePaths:
+        - app-modules/*/tests/*
+
+    # https://phpstan.org/config-reference#treatphpdoctypesascertain
+    treatPhpDocTypesAsCertain: false
+
+    # https://github.com/larastan/larastan/blob/3.x/docs/rules.md
+    noUnnecessaryEnumerableToArrayCalls: true
+    checkModelProperties: true
+    checkOctaneCompatibility: true
+    checkMissingTranslations: true
+    checkModelMethodVisibility: true
+    checkAuthCallsWhenInRequestScope: true
+
+    # https://github.com/larastan/larastan/blob/3.x/docs/custom-config-parameters.md#databasemigrationspath
+    databaseMigrationsPath:
+        - database/migrations
+        - app-modules/*/database/migrations
+
+    # https://github.com/larastan/larastan/blob/3.x/docs/custom-config-parameters.md#enablemigrationcache
+    enableMigrationCache: true
+
+    # https://github.com/larastan/larastan/blob/3.x/docs/custom-config-parameters.md#parsemodelcastsmethod
+    parseModelCastsMethod: true
+
+    # https://github.com/larastan/larastan/blob/3.x/docs/custom-config-parameters.md#checkconfigtypes
+    checkConfigTypes: true
+
+    # https://github.com/larastan/larastan/blob/3.x/docs/custom-config-parameters.md#generalizeenvreturntype
+    generalizeEnvReturnType: true
