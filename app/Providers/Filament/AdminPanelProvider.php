@@ -44,6 +44,10 @@ class AdminPanelProvider extends PanelProvider
                     ->navigationGroup('Settings'),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
+            ->discoverResources(in: base_path('app-modules/categories/src/Filament/Resources'), for: 'Modules\Categories\Filament\Resources')
+            ->discoverResources(in: base_path('app-modules/attributes/src/Filament/Resources'), for: 'Modules\Attributes\Filament\Resources')
+            ->discoverResources(in: base_path('app-modules/products/src/Filament/Resources'), for: 'Modules\Products\Filament\Resources')
+            ->discoverResources(in: base_path('app-modules/channels/src/Filament/Resources'), for: 'Modules\Channels\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,
@@ -54,6 +58,8 @@ class AdminPanelProvider extends PanelProvider
                 FilamentInfoWidget::class,
             ])
             ->navigationGroups([
+                NavigationGroup::make()
+                    ->label('Catalog'),
                 NavigationGroup::make()
                     ->label('Settings'),
             ])

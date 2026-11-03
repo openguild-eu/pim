@@ -1,0 +1,28 @@
+{
+	"name": "modules/relations",
+	"description": "",
+	"type": "library",
+	"version": "1.0",
+	"license": "proprietary",
+	"require": {
+		"filament/filament": "^4.0",
+		"laravel/framework": "^13.0",
+		"modules/products": "*"
+	},
+	"autoload": {
+		"psr-4": {
+			"Modules\\Relations\\": "src/",
+			"Modules\\Relations\\Tests\\": "tests/",
+			"Modules\\Relations\\Database\\Factories\\": "database/factories/",
+			"Modules\\Relations\\Database\\Seeders\\": "database/seeders/"
+		}
+	},
+	"minimum-stability": "stable",
+	"extra": {
+		"laravel": {
+			"providers": [
+				"Modules\\Relations\\Providers\\RelationsServiceProvider"
+			]
+		}
+	}
+}

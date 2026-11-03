@@ -1,0 +1,29 @@
+{
+	"name": "modules/products",
+	"description": "",
+	"type": "library",
+	"version": "1.0",
+	"license": "proprietary",
+	"require": {
+		"filament/filament": "^4.0",
+		"laravel/framework": "^13.0",
+		"modules/attributes": "*",
+		"modules/categories": "*"
+	},
+	"autoload": {
+		"psr-4": {
+			"Modules\\Products\\": "src/",
+			"Modules\\Products\\Tests\\": "tests/",
+			"Modules\\Products\\Database\\Factories\\": "database/factories/",
+			"Modules\\Products\\Database\\Seeders\\": "database/seeders/"
+		}
+	},
+	"minimum-stability": "stable",
+	"extra": {
+		"laravel": {
+			"providers": [
+				"Modules\\Products\\Providers\\ProductsServiceProvider"
+			]
+		}
+	}
+}

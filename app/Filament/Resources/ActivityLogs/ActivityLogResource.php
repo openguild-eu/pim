@@ -11,6 +11,11 @@ use Filament\Facades\Filament;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Modules\Attributes\Models\Attribute;
+use Modules\Attributes\Models\AttributeSet;
+use Modules\Categories\Models\Category;
+use Modules\Channels\Models\Channel;
+use Modules\Products\Models\Product;
 use Modules\Users\Models\User;
 
 class ActivityLogResource extends BaseActivityLogResource
@@ -68,6 +73,21 @@ class ActivityLogResource extends BaseActivityLogResource
                     $userQuery->whereHas('catalogs', function (Builder $catalogsQuery) use ($tenant): void {
                         $catalogsQuery->whereKey($tenant->getKey());
                     });
+                })
+                ->orWhereHasMorph('subject', [Attribute::class], function (Builder $attributeQuery) use ($tenant): void {
+                    $attributeQuery->where('catalog_id', $tenant->getKey());
+                })
+                ->orWhereHasMorph('subject', [AttributeSet::class], function (Builder $attributeSetQuery) use ($tenant): void {
+                    $attributeSetQuery->where('catalog_id', $tenant->getKey());
+                })
+                ->orWhereHasMorph('subject', [Category::class], function (Builder $categoryQuery) use ($tenant): void {
+                    $categoryQuery->where('catalog_id', $tenant->getKey());
+                })
+                ->orWhereHasMorph('subject', [Product::class], function (Builder $productQuery) use ($tenant): void {
+                    $productQuery->where('catalog_id', $tenant->getKey());
+                })
+                ->orWhereHasMorph('subject', [Channel::class], function (Builder $channelQuery) use ($tenant): void {
+                    $channelQuery->where('catalog_id', $tenant->getKey());
                 });
         });
     }

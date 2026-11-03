@@ -1,6 +1,8 @@
 <?php
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\Catalog;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Modules\Users\Models\User;
 use Tests\TestCase;
 
 /*
@@ -15,8 +17,8 @@ use Tests\TestCase;
 */
 
 pest()->extend(TestCase::class)
- // ->use(RefreshDatabase::class)
-    ->in('Feature');
+    ->use(LazilyRefreshDatabase::class)
+    ->in('Feature', '../app-modules');
 
 /*
 |--------------------------------------------------------------------------
@@ -47,4 +49,30 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/**
+ * Creates a Catalog (with its own Subdomain), a User who is a member of
+ * it, authenticates as that user, and boots the Filament tenant context
+ * for the "admin" panel so CatalogScope-backed queries and
+ * BelongsToTenant's model-creation listener behave as they do in a real
+ * request. Every module's resource/page tests build on this.
+ */
+function actingAsCatalogUser(?Catalog $catalog = null): Catalog
+{
+    $catalog ??= Catalog::factory()->create();
+
+    $user = User::factory()->create([
+        'subdomain_id' => $catalog->subdomain_id,
+    ]);
+
+    $catalog->users()->attach($user);
+
+    test()->actingAs($user);
+
+    Filament\Facades\Filament::setCurrentPanel('admin');
+    Filament\Facades\Filament::setTenant($catalog);
+    Filament\Facades\Filament::bootCurrentPanel();
+
+    return $catalog;
 }
