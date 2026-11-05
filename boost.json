@@ -1,14 +1,32 @@
 {
+    "agents": [
+        "claude_code"
+    ],
     "cloud": true,
     "guidelines": true,
     "mcp": true,
     "nightwatch": false,
+    "packages": [
+        "alizharb/filament-activity-log",
+        "internachi/modular",
+        "spatie/laravel-activitylog",
+        "spatie/laravel-medialibrary",
+        "filament/filament",
+        "filament/blueprint"
+    ],
     "sail": false,
     "skills": [
         "infer-conventions",
         "deploying-to-cloud",
         "laravel-best-practices",
         "testing-best-practices",
-        "tailwindcss-development"
+        "tailwindcss-development",
+        "filament-development",
+        "modular",
+        "activitylog-development",
+        "medialibrary-development",
+        "filament-security-audit",
+        "planning-filament",
+        "reviewing-filament-plans"
     ]
 }

@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use AlizHarb\ActivityLog\ActivityLogPlugin;
 use App\Http\Middleware\IdentifySubdomain;
 use App\Models\Catalog;
+use Filament\Auth\MultiFactor\App\AppAuthentication;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -32,6 +33,10 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('/')
             ->brandName('PIM')
+            ->profile()
+            ->multiFactorAuthentication([
+                AppAuthentication::make(),
+            ])
             ->spa()
             ->tenant(Catalog::class, ownershipRelationship: 'catalog', slugAttribute: 'name')
             ->login()

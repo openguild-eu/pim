@@ -1,3 +1,23 @@
+# Claude Code Orchestration Protocol
+
+## Role & Architecture
+You are the **Lead Architect (Claude Fable)**. You do NOT write execution code or run routine tests directly. Your job is strictly restricted to high-level planning, routing, architectural design, and final review.
+
+## Multi-Agent Workflow Rules
+1. **Preparation Phase:** For exploration, log parsing, or repository mappings, spawn a swift sub-agent (e.g., Sonnet or Haiku).
+2. **Design & Plan:** Fable synthesizes the insights and writes a precise technical plan (or ADR) including parallel execution paths.
+3. **Execution Phase:** You MUST delegate code generation and implementation tasks to isolated sub-agents pinned to **Claude Opus** or **Sonnet**.
+4. **Review & Adjudication:** Fable performs the final code review, runs verification tests, and approves the merge. Do not accept sub-agent outputs without automated validation.
+
+## Tooling Reconciliation (Laravel Boost / MCP / Filament Blueprint)
+The guidelines below (Laravel Boost, Boost MCP tools, Artisan, Pint, Pest) describe *how* work gets done — they bind whichever agent is doing that work, not just Fable. Reconcile them with the roles above as follows:
+- **Preparation sub-agents** may use read-only Boost MCP tools (`database-schema`, `search-docs`, `browser-logs`, `route:list`, Laravel MCP resource/tool inspection) freely during exploration.
+- **Design (Fable):** for any Filament work, invoke the `planning-filament` skill and write the resulting plan as Markdown to `blueprints/<feature>.md`. That file is the plan artifact handed to execution — Fable does not implement it.
+- **Execution sub-agents** (Opus/Sonnet) are dispatched with: *"Implement blueprints/<feature>.md. Follow the plan and run the relevant tests. Report what was implemented and any checks that could not be completed."* They own all code generation, activate the relevant Boost skill for the domain (modular, filament-development, activitylog-development, medialibrary-development, etc.), and run `vendor/bin/pint --dirty --format agent` plus the affected Pest tests before reporting back.
+- **Review (Fable):** invoke the `reviewing-filament-plans` skill with: *"Using the reviewing-filament-plans skill, review the implementation in this checkout against blueprints/<feature>.md, including the current uncommitted changes. Report requirement traceability, confirmed deviations, and anything blocked or not verified. Do not change application code."* Fable may also use read-only Boost tools (`database-query`, `search-docs`) to verify claims, but does not author or change implementation code during review.
+
+
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
@@ -42,6 +62,28 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 # Laravel Boost
 
+## Tools
+
+- Laravel Boost is an MCP server with tools designed specifically for this application. Prefer Boost tools over manual alternatives like shell commands or file reads.
+- Use `database-query` to run read-only queries against the database instead of writing raw SQL in tinker.
+- Use `database-schema` to inspect table structure before writing migrations or models.
+- Use `get-absolute-url` to resolve the correct scheme, domain, and port for project URLs. Always use this before sharing a URL with the user.
+- Use `browser-logs` to read browser logs, errors, and exceptions. Only recent logs are useful, ignore old entries.
+
+## Searching Documentation (IMPORTANT)
+
+- Use `search-docs` before changes that depend on Laravel ecosystem APIs, behavior, configuration, or version-specific syntax. Skip it for copy-only edits and other changes where package documentation is irrelevant. Reuse sufficient results already in context instead of searching again.
+- Pass a `packages` array to scope results when you know which packages are relevant.
+- Use multiple broad, topic-based queries: `['rate limiting', 'routing rate limiting', 'routing']`. Expect the most relevant results first.
+- Do not add package names to queries because package info is already shared. Use `test resource table`, not `filament 4 test resource table`.
+
+### Search Syntax
+
+1. Use words for auto-stemmed AND logic: `rate limit` matches both "rate" AND "limit".
+2. Use `"quoted phrases"` for exact position matching: `"infinite scroll"` requires adjacent words in order.
+3. Combine words and phrases for mixed queries: `middleware "rate limit"`.
+4. Use multiple queries for OR logic: `queries=["authentication", "middleware"]`.
+
 ## Project Rules
 
 - This project contains committed, area-grouped rules in `.ai/rules` when that directory exists, including path-scoped framework guidelines under `.ai/rules/boost`. Before you enter plan mode or create/edit any file, you MUST first: open @.ai/rules/index.md (it maps file globs to rule files), read every rule file whose globs cover the path(s) in scope, and run `grep -rin 'keyword' .ai/rules` to catch what a path match alone misses. Do not write code until you have read and are following every matching rule. If `.ai/rules` does not exist, continue without it.
@@ -82,6 +124,16 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 - The application is served by Laravel Herd at `https?://[kebab-case-project-dir].test`. Use the `get-absolute-url` tool to generate valid URLs. Never run commands to serve the site. It is always available.
 - Use the `herd` CLI to manage services, PHP versions, and sites (e.g. `herd sites`, `herd services:start <service>`, `herd php:list`). Run `herd list` to discover all available commands.
+
+=== tests rules ===
+
+# Test Enforcement
+
+- Add or update tests for behavior and logic changes when a test provides meaningful regression coverage.
+- Pure copy, styling, and layout-only changes do not require new or updated tests.
+- When test coverage applies, run the affected tests and ensure they pass.
+- Test the changed behavior and its important failure modes, but do not add tests beyond them.
+- Read the `testing-best-practices` skill before writing tests.
 
 === laravel/core rules ===
 
@@ -130,5 +182,69 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Run the narrowest set of tests that covers the change. Pass a file path or `--filter=testName` to `php artisan test --compact`.
 - Rerun a test after each change to it.
 - Run `vendor/bin/pest` to call the test runner directly. It accepts the same file path and `--filter=testName` arguments.
+
+=== alizharb/filament-activity-log/core rules ===
+
+<guideline>
+    <title>Filament Activity Log</title>
+
+    <summary>
+        Filament Activity Log provides a Filament resource, timeline actions, widgets, exports, and audit-focused helpers on top of spatie/laravel-activitylog.
+    </summary>
+
+    <installation>
+        Install the package with Composer, register <code>AlizHarb\ActivityLog\ActivityLogPlugin::make()</code> in the Filament panel, and run <code>php artisan filament-activity-log:install</code> when publishing configuration or assets is needed.
+    </installation>
+
+    <spatie-activitylog>
+        Use Spatie's <code>LogsActivity</code> trait on models that should be audited. For Spatie v5, make sure the official v5 migration has been completed before relying on this package. Spatie v4 stores changes in <code>properties</code>; Spatie v5 stores them in <code>attribute_changes</code>. This package reads both.
+    </spatie-activitylog>
+
+    <privacy>
+        Do not intentionally log passwords, tokens, API keys, secrets, or private keys. The package redacts configured sensitive fields before display, but redaction is a safety layer and not a reason to store secrets in activity logs.
+    </privacy>
+
+    <risk-scoring>
+        Use the configured risk system to highlight destructive, security-sensitive, and privacy-sensitive activity. Customize <code>filament-activity-log.risk</code> or provide a resolver class when application-specific scoring is required.
+    </risk-scoring>
+
+    <immutable-mode>
+        For compliance-heavy panels, enable <code>filament-activity-log.privacy.immutable_mode</code>. This hides delete, bulk delete, prune, restore, and revert actions from the package UI.
+    </immutable-mode>
+
+    <authorization>
+        Prefer Filament/Laravel authorization for access control. If the application needs a simple package-level rule, configure <code>permissions.custom_authorization</code> with an invokable class instead of a closure so config caching remains safe.
+    </authorization>
+
+    <performance>
+        Activity tables can grow quickly. Keep filters selective, avoid rendering large JSON payloads in table rows, and add database indexes for common filters such as <code>created_at</code>, <code>event</code>, <code>log_name</code>, <code>causer_type</code>/<code>causer_id</code>, and <code>subject_type</code>/<code>subject_id</code>.
+    </performance>
+
+    <filament-usage>
+        Use <code>ActivitiesRelationManager</code> to add model-specific history to resources. Use <code>ActivityLogTimelineTableAction</code> when a compact slide-over timeline is better than navigating to the full resource.
+    </filament-usage>
+</guideline>
+
+=== internachi/modular/core rules ===
+
+## Modular
+
+- This a modular application. Each module is located in its own directory inside of `app-modules`.
+- IMPORTANT: Activate `modular` every time you're working with or creating a new module.
+
+=== spatie/laravel-activitylog/core rules ===
+
+## Activitylog
+
+- `spatie/laravel-activitylog` logs model events and manual activities to a database table, with subjects, causers, tracked attribute changes, and custom properties.
+- Always activate the `activitylog-development` skill when working with activity logging or any code that uses the `LogsActivity`, `CausesActivity`, or `HasActivity` traits, `LogOptions`, the `Activity` model, or the `activity()` helper.
+- If the skill is unavailable, read `vendor/spatie/laravel-activitylog/resources/boost/skills/activitylog-development/SKILL.md` before making changes.
+
+=== spatie/laravel-medialibrary/core rules ===
+
+## Media Library
+
+- `spatie/laravel-medialibrary` associates files with Eloquent models, with support for collections, conversions, and responsive images.
+- Always activate the `medialibrary-development` skill when working with media uploads, conversions, collections, responsive images, or any code that uses the `HasMedia` interface or `InteractsWithMedia` trait.
 
 </laravel-boost-guidelines>

@@ -1,7 +1,11 @@
 <?php
 
 use App\Models\Catalog;
+use App\Models\Subdomain;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Str;
+use Modules\Channels\Models\ApiKey;
+use Modules\Channels\Models\Channel;
 use Modules\Users\Models\User;
 use Tests\TestCase;
 
@@ -75,4 +79,42 @@ function actingAsCatalogUser(?Catalog $catalog = null): Catalog
     Filament\Facades\Filament::bootCurrentPanel();
 
     return $catalog;
+}
+
+/**
+ * Creates a Subdomain, a Catalog under it, an active Channel under that
+ * catalog, and an active ApiKey for the channel. actingAsCatalogUser() only
+ * sets Filament's in-process tenant and never goes through real host-based
+ * routing, so it's unusable for API tests that must exercise
+ * IdentifySubdomain against a real Host header — this builds the whole
+ * chain and returns the plaintext key, which is only ever available at
+ * creation time.
+ *
+ * @return array{channel: Channel, apiKey: ApiKey, plainTextKey: string, subdomain: Subdomain, catalog: Catalog, apiUrl: string}
+ */
+function makeChannelWithApiKey(array $channelAttributes = [], array $apiKeyAttributes = []): array
+{
+    $subdomain = Subdomain::factory()->create();
+    $catalog = Catalog::factory()->create(['subdomain_id' => $subdomain->id]);
+    $channel = Channel::factory()->create([
+        ...$channelAttributes,
+        'catalog_id' => $catalog->id,
+    ]);
+
+    $plainTextKey = Str::random(64);
+
+    $apiKey = ApiKey::factory()->create([
+        ...$apiKeyAttributes,
+        'channel_id' => $channel->id,
+        'key_hash' => hash('sha256', $plainTextKey),
+    ]);
+
+    return [
+        'channel' => $channel,
+        'apiKey' => $apiKey,
+        'plainTextKey' => $plainTextKey,
+        'subdomain' => $subdomain,
+        'catalog' => $catalog,
+        'apiUrl' => 'http://'.$subdomain->subdomain.'.'.config('app.central_domain').'/api/v1',
+    ];
 }

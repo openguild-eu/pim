@@ -22,6 +22,7 @@ use Modules\Channels\Filament\Resources\Channels\Pages\CreateChannel;
 use Modules\Channels\Filament\Resources\Channels\Pages\EditChannel;
 use Modules\Channels\Filament\Resources\Channels\Pages\ListChannels;
 use Modules\Channels\Filament\Resources\Channels\Pages\ManageChannelActivities;
+use Modules\Channels\Filament\Resources\Channels\RelationManagers\ApiKeysRelationManager;
 use Modules\Channels\Models\Channel;
 
 class ChannelResource extends Resource
@@ -101,7 +102,9 @@ class ChannelResource extends Resource
 
     public static function getRelations(): array
     {
-        return [];
+        return [
+            ApiKeysRelationManager::class,
+        ];
     }
 
     public static function getPages(): array
