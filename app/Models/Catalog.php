@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Str;
 use Modules\Users\Models\User;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
@@ -29,6 +30,7 @@ class Catalog extends Model
     protected $fillable = [
         'subdomain_id',
         'name',
+        'slug',
     ];
 
     /**
@@ -70,6 +72,37 @@ class Catalog extends Model
             if (! $catalog->subdomain_id && app()->has('current_subdomain')) {
                 $catalog->subdomain_id = app('current_subdomain')->id;
             }
+
+            if (! $catalog->slug) {
+                $catalog->slug = static::resolveUniqueSlug((string) $catalog->name, $catalog->subdomain_id);
+            }
         });
+    }
+
+    /**
+     * Derive a collision-safe slug from $name within the given Subdomain,
+     * appending -2, -3, ... until it no longer collides. Used both here
+     * (auto-derivation for new Catalogs, e.g. via RegisterCatalog's
+     * name-only form) and by the slug-backfill migration, so the
+     * collision-resolution algorithm only exists in one place.
+     */
+    public static function resolveUniqueSlug(string $name, ?int $subdomainId, ?int $ignoreId = null): string
+    {
+        $base = Str::slug($name);
+        $slug = $base;
+        $suffix = 2;
+
+        while (
+            static::query()->withoutGlobalScopes()
+                ->where('subdomain_id', $subdomainId)
+                ->where('slug', $slug)
+                ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
+                ->exists()
+        ) {
+            $slug = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $slug;
     }
 }

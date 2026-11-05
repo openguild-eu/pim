@@ -171,6 +171,10 @@ Candidate domains to work through together:
 - [product-import-export.md](product-import-export.md) — CSV/XLSX
   import (upsert by SKU) and export for Products, using Filament's
   already-installed import/export actions (no new dependency)
+- [administration.md](administration.md) — per-subdomain `admin` role
+  (via `spatie/laravel-permission`, new dependency) that can manage Users
+  and Catalogs and assign Catalogs to Users; the first resource-level
+  authorization restriction in this app
 - **Completeness/workflow** — draft → ready → published states, data
   quality scoring (not yet designed)
 

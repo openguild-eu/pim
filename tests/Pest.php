@@ -7,6 +7,8 @@ use Illuminate\Support\Str;
 use Modules\Channels\Models\ApiKey;
 use Modules\Channels\Models\Channel;
 use Modules\Users\Models\User;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /*
@@ -117,4 +119,48 @@ function makeChannelWithApiKey(array $channelAttributes = [], array $apiKeyAttri
         'catalog' => $catalog,
         'apiUrl' => 'http://'.$subdomain->subdomain.'.'.config('app.central_domain').'/api/v1',
     ];
+}
+
+/**
+ * Creates the `admin` role row for one Subdomain. With the permission
+ * package's "teams" feature keyed on `subdomain_id`, every Subdomain needs
+ * its own `admin` role row before any of its users can be assigned it.
+ */
+function createAdminRole(Subdomain $subdomain): Role
+{
+    return Role::create(['name' => 'admin', 'subdomain_id' => $subdomain->id]);
+}
+
+/**
+ * Like actingAsCatalogUser(), and additionally mirrors what
+ * IdentifySubdomain does on a real request: binds `current_subdomain` (so
+ * TenantScope isolates Users and Catalogs) and sets the permissions team id
+ * to that Subdomain. When $isAdmin is true, the authenticated user is
+ * granted the Subdomain's `admin` role.
+ */
+function actingAsSubdomainUser(bool $isAdmin = false, ?Catalog $catalog = null): Catalog
+{
+    $catalog = actingAsCatalogUser($catalog);
+    $subdomain = $catalog->subdomain;
+
+    app()->instance('current_subdomain', $subdomain);
+    app(PermissionRegistrar::class)->setPermissionsTeamId($subdomain->id);
+
+    if ($isAdmin) {
+        Role::findOrCreate('admin');
+        auth()->user()->assignRole('admin');
+    }
+
+    return $catalog;
+}
+
+/**
+ * The panel URL for a path inside the given Catalog tenant, on that
+ * Catalog's Subdomain host, so IdentifySubdomain resolves it as it would
+ * in production. Built from the Catalog's `slug` (the panel's
+ * `slugAttribute`), not its display `name`.
+ */
+function catalogPanelUrl(Catalog $catalog, string $path): string
+{
+    return 'http://'.$catalog->subdomain->subdomain.'.'.config('app.central_domain').'/'.rawurlencode($catalog->slug).'/'.ltrim($path, '/');
 }
