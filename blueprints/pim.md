@@ -22,9 +22,18 @@ and activity logging all follow the same approach):
   the `User` model and its migration, enough for login). Every other domain
   module is deliberately **not yet created** — each is scoped and blueprinted
   here module-by-module before it's built.
-- No multi-factor authentication, no GraphQL API, no barcode/QR scanning —
-  none of those WMS-specific extras were carried over. Add them later only if
-  the PIM design calls for them.
+- No GraphQL API, no barcode/QR scanning — those WMS-specific extras were not
+  carried over.
+- **Multi-factor authentication (implemented)**: unlike the initial decision
+  to leave MFA out, it was added to the Admin panel —
+  `->multiFactorAuthentication([AppAuthentication::make()])` in
+  `AdminPanelProvider`, with `Modules\Users\Models\User` implementing
+  `HasAppAuthentication`, `HasAppAuthenticationRecovery`, and
+  `HasEmailAuthentication` (TOTP app-based + email-based factors). The
+  `app_authentication_secret` and `app_authentication_recovery_codes`
+  columns are `encrypted`/`encrypted:array`-cast and listed in `$hidden`;
+  neither is ever added to any model's `logOnly()` activity-log list, per
+  §2's sensitive-field exclusion rule.
 
 ---
 
@@ -57,8 +66,9 @@ These rules apply across every module documented in this Blueprint.
   (tenant/catalog isolation) and `User::canAccessPanel()`/`canAccessTenant()`
   overrides. Follow this same convention for new work unless a module
   blueprint says otherwise.
-- Navigation groups: only one is registered so far,
-  `NavigationGroup::make()->label('Settings')`, in `AdminPanelProvider`.
+- Navigation groups: two are registered in `AdminPanelProvider` —
+  `NavigationGroup::make()->label('Catalog')` (added once the first Catalog
+  domain module was built) and `NavigationGroup::make()->label('Settings')`.
 
 ---
 
@@ -152,6 +162,9 @@ Candidate domains to work through together:
   no new schema of its own
 - [channels.md](channels.md) — `Channel` model + `channel_product`
   assignment pivot (`is_published`/`published_at`) on Product
+- [channels-api-keys.md](channels-api-keys.md) — per-channel API keys
+  gating a public, read-only Products JSON API (documented after the fact;
+  stands alongside channels.md, doesn't replace it)
 - [relations.md](relations.md) — `product_relations` pivot-model powering
   three directional relationship types (related/cross-sell/up-sell) as
   three Product sub-navigation tabs

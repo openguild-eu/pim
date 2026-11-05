@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Auth\SubdomainUserProvider;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
+use Modules\Users\Models\User;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -13,7 +15,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // This app has no `App\Models\User`; it uses the modular
+        // `Modules\Users\Models\User`. Filament's `Export::user()`
+        // relationship (and other first-party packages) resolve the
+        // authenticatable model via this binding, per
+        // vendor/filament/actions/docs/12-export.md "Using a custom user model".
+        $this->app->bind(Authenticatable::class, User::class);
     }
 
     /**

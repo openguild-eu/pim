@@ -7,9 +7,13 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\RestoreAction;
 use Filament\Actions\Testing\TestAction;
 use Filament\Forms\Components\Field;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\SpatieMediaLibraryFileUpload;
+use Filament\Tables\Columns\SpatieMediaLibraryImageColumn;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rules\Enum;
 use Livewire\Livewire;
 use Modules\Attributes\Models\Attribute;
 use Modules\Attributes\Models\AttributeSet;
@@ -42,32 +46,45 @@ it('does not list products belonging to a different catalog', function () {
         ->assertCanNotSeeTableRecords([$foreign]);
 });
 
-it('requires sku, name, slug, and status', function () {
+dataset('product field validation', [
+    'sku is required' => ['sku', '', 'required'],
+    'sku rejects more than 255 characters' => ['sku', str_repeat('a', 256), 'max'],
+    'sku accepts exactly 255 characters' => ['sku', str_repeat('a', 255), null],
+    'name is required' => ['name', '', 'required'],
+    'name rejects more than 255 characters' => ['name', str_repeat('a', 256), 'max'],
+    'name accepts exactly 255 characters' => ['name', str_repeat('a', 255), null],
+    'slug is required' => ['slug', '', 'required'],
+    'slug rejects more than 255 characters' => ['slug', str_repeat('a', 256), 'max'],
+    'slug accepts exactly 255 characters' => ['slug', str_repeat('a', 255), null],
+    'slug rejects characters that are not alpha-dash' => ['slug', 'not a slug!', 'alpha_dash'],
+    'status is required' => ['status', null, 'required'],
+    'status rejects a value outside the ProductStatus enum' => ['status', 'archived', Enum::class],
+    'price rejects a negative value' => ['price', -1, 'min'],
+    'price accepts null' => ['price', null, null],
+]);
+
+it('validates product form fields', function (string $field, mixed $value, ?string $expectedRule) {
     actingAsCatalogUser();
 
-    Livewire::test(CreateProduct::class)
-        ->fillForm(['sku' => '', 'name' => '', 'slug' => '', 'status' => null])
-        ->call('create')
-        ->assertHasFormErrors(['sku' => 'required', 'name' => 'required', 'slug' => 'required', 'status' => 'required']);
-});
+    $test = Livewire::test(CreateProduct::class)
+        ->fillForm([
+            'sku' => 'SKU-1',
+            'name' => 'Boots',
+            'slug' => 'boots',
+            'status' => ProductStatus::Draft->value,
+            'price' => 1999,
+            $field => $value,
+        ])
+        ->call('create');
 
-it('requires the slug to be alpha-dash', function () {
-    actingAsCatalogUser();
+    if ($expectedRule === null) {
+        $test->assertHasNoFormErrors();
 
-    Livewire::test(CreateProduct::class)
-        ->fillForm(['sku' => 'SKU-1', 'name' => 'Boots', 'slug' => 'not a slug!', 'status' => 'draft'])
-        ->call('create')
-        ->assertHasFormErrors(['slug' => 'alpha_dash']);
-});
+        return;
+    }
 
-it('rejects a negative price', function () {
-    actingAsCatalogUser();
-
-    Livewire::test(CreateProduct::class)
-        ->fillForm(['sku' => 'SKU-1', 'name' => 'Boots', 'slug' => 'boots', 'status' => 'draft', 'price' => -1])
-        ->call('create')
-        ->assertHasFormErrors(['price']);
-});
+    $test->assertHasFormErrors([$field => $expectedRule]);
+})->with('product field validation');
 
 it('requires the sku to be unique within the same catalog', function () {
     $catalog = actingAsCatalogUser();
@@ -120,9 +137,43 @@ it('does not overwrite an existing slug when the name changes on edit', function
         ->assertSchemaStateSet(['slug' => 'custom-slug']);
 });
 
-it('renders the status column with the enum-configured color', function () {
-    expect(ProductStatus::Draft->getColor())->toBe('gray')
-        ->and(ProductStatus::Published->getColor())->toBe('success');
+it('renders the status column as a badge with the color resolved per record', function () {
+    $catalog = actingAsCatalogUser();
+    $draft = Product::factory()->create(['catalog_id' => $catalog->id, 'status' => ProductStatus::Draft]);
+    $published = Product::factory()->create(['catalog_id' => $catalog->id, 'status' => ProductStatus::Published]);
+
+    $test = Livewire::test(ListProducts::class);
+    $column = $test->instance()->getTable()->getColumn('status');
+
+    $column->record($test->instance()->getTableRecord((string) $draft->getKey()));
+    expect($column->getColor($column->getState()))->toBe('gray');
+
+    $column->record($test->instance()->getTableRecord((string) $published->getKey()));
+    expect($column->getColor($column->getState()))->toBe('success');
+});
+
+it('does not write to a product in a different catalog when the edit form is submitted directly', function () {
+    $otherCatalog = Catalog::factory()->create();
+    $product = Product::factory()->create(['catalog_id' => $otherCatalog->id, 'name' => 'Original Name']);
+
+    actingAsCatalogUser();
+
+    expect(fn () => Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+        ->fillForm(['name' => 'Hacked Name'])
+        ->call('save'))
+        ->toThrow(ModelNotFoundException::class);
+
+    expect($product->refresh()->name)->toBe('Original Name');
+});
+
+it('configures the attribute_set_id select as live so the attributes section reacts to changes', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateProduct::class)
+        ->assertSchemaComponentExists(
+            'attribute_set_id',
+            checkComponentUsing: fn (Select $component): bool => $component->isLive(),
+        );
 });
 
 it('persists category assignment on create', function () {
@@ -206,11 +257,14 @@ it('can sort products by sku, name, and price', function () {
     Product::factory()->count(3)->create(['catalog_id' => $catalog->id]);
 
     $bySku = Product::query()->orderBy('sku')->get();
+    $byName = Product::query()->orderBy('name')->get();
     $byPrice = Product::query()->orderBy('price')->get();
 
     Livewire::test(ListProducts::class)
         ->sortTable('sku')
         ->assertCanSeeTableRecords($bySku, inOrder: true)
+        ->sortTable('name')
+        ->assertCanSeeTableRecords($byName, inOrder: true)
         ->sortTable('price')
         ->assertCanSeeTableRecords($byPrice, inOrder: true);
 });
@@ -380,7 +434,7 @@ it('retrieves uploaded images in upload order with the first as primary', functi
         ->and($media->pluck('order_column')->all())->toBe([1, 2, 3]);
 });
 
-it('changes the primary image when media is reordered', function () {
+it('changes the primary image when media is reordered via the Edit page form field and saved', function () {
     Storage::fake('public');
     $catalog = actingAsCatalogUser();
     $product = Product::factory()->create(['catalog_id' => $catalog->id]);
@@ -388,17 +442,101 @@ it('changes the primary image when media is reordered', function () {
     $mediaB = $product->addMedia(UploadedFile::fake()->image('b.jpg'))->preservingOriginal()->toMediaCollection('images');
     $mediaC = $product->addMedia(UploadedFile::fake()->image('c.jpg'))->preservingOriginal()->toMediaCollection('images');
 
-    // Reorder to C, B, A by directly updating order_column, the same
-    // persisted effect the form field's drag-and-drop reorder produces.
-    $mediaC->order_column = 1;
-    $mediaC->save();
-    $mediaB->order_column = 2;
-    $mediaB->save();
-    $mediaA->order_column = 3;
-    $mediaA->save();
+    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
+
+    // The `images` field hydrates from the record's media relationship on
+    // mount, in ascending order_column order (a, b, c). Drive the reorder
+    // through the actual SpatieMediaLibraryFileUpload field's exposed
+    // `reorderUploadedFiles()` method — the same method the field's
+    // `->reorderable()` drag-and-drop calls client-side — rather than
+    // mutating `order_column` directly.
+    $imagesField = $test->instance()->getSchema('form')->getFlatComponents(withHidden: true)['images'];
+
+    $test->call('callSchemaComponentMethod', $imagesField->getKey(), 'reorderUploadedFiles', [[
+        $mediaC->uuid, $mediaB->uuid, $mediaA->uuid,
+    ]])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    // Assert the actual persisted order_column values, not just the
+    // in-memory form/UI state.
+    expect($mediaC->refresh()->order_column)->toBe(1)
+        ->and($mediaB->refresh()->order_column)->toBe(2)
+        ->and($mediaA->refresh()->order_column)->toBe(3);
 
     $product->refresh();
 
     expect($product->getMedia('images')->first()->is($mediaC))->toBeTrue()
         ->and($product->getFirstMedia('images')->file_name)->toBe('c.jpg');
+});
+
+it('renders the leading images table column with the first-in-order media thumbnail after a 3-image upload', function () {
+    Storage::fake('public');
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+
+    Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+        ->fillForm(['images' => [
+            UploadedFile::fake()->image('a.jpg'),
+            UploadedFile::fake()->image('b.jpg'),
+            UploadedFile::fake()->image('c.jpg'),
+        ]])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $product->refresh();
+    $firstMedia = $product->getMedia('images')->first();
+
+    $test = Livewire::test(ListProducts::class);
+    $column = $test->instance()->getTable()->getColumn('images');
+    $column->record($test->instance()->getTableRecord((string) $product->getKey()));
+
+    $state = $column->getState();
+
+    // The column resolves a signed/temporary URL rather than a bare path
+    // (per the default disk-based visibility rules in Filament's
+    // ImageColumn), so compare by the underlying thumb-conversion file
+    // name rather than the full URL string.
+    expect($state[0])->toBe($firstMedia->uuid)
+        ->and($column->getImageUrl($state[0]))->toContain(pathinfo($firstMedia->getPath('thumb'), PATHINFO_BASENAME));
+});
+
+it('does not attach media to a product in a different catalog when the edit form is submitted directly', function () {
+    Storage::fake('public');
+    $otherCatalog = Catalog::factory()->create();
+    $product = Product::factory()->create(['catalog_id' => $otherCatalog->id]);
+
+    actingAsCatalogUser();
+
+    expect(fn () => Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+        ->fillForm(['images' => [UploadedFile::fake()->image('intrusion.jpg')]])
+        ->call('save'))
+        ->toThrow(ModelNotFoundException::class);
+
+    expect($product->refresh()->getMedia('images'))->toHaveCount(0);
+});
+
+it('configures the images field as a reorderable, multiple, image-only SpatieMediaLibraryFileUpload bound to the images collection', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateProduct::class)
+        ->assertSchemaComponentExists(
+            'images',
+            checkComponentUsing: fn (SpatieMediaLibraryFileUpload $component): bool => $component->getCollection() === 'images'
+                && $component->isMultiple()
+                && $component->isReorderable()
+                && in_array('image/*', $component->getAcceptedFileTypes() ?? [], true),
+        );
+});
+
+it('configures the leading images table column as a SpatieMediaLibraryImageColumn bound to the images collection with the thumb conversion limited to one image', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(ListProducts::class)
+        ->assertTableColumnExists(
+            'images',
+            fn (SpatieMediaLibraryImageColumn $column): bool => $column->getCollection() === 'images'
+                && $column->getConversion() === 'thumb'
+                && $column->getLimit() === 1,
+        );
 });

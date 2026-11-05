@@ -45,6 +45,33 @@ it('allows the same slug in two different catalogs', function () {
     $this->assertDatabaseHas('channels', ['slug' => 'webshop']);
 });
 
+it('requires the slug to be alpha-dash', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateChannel::class)
+        ->fillForm(['name' => 'Webshop', 'slug' => 'not a slug!'])
+        ->call('create')
+        ->assertHasFormErrors(['slug' => 'alpha_dash']);
+});
+
+it('accepts a 255 character name and slug', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateChannel::class)
+        ->fillForm(['name' => str_repeat('a', 255), 'slug' => str_repeat('a', 255)])
+        ->call('create')
+        ->assertHasNoFormErrors(['name', 'slug']);
+});
+
+it('rejects a name and slug over 255 characters', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateChannel::class)
+        ->fillForm(['name' => str_repeat('a', 256), 'slug' => str_repeat('a', 256)])
+        ->call('create')
+        ->assertHasFormErrors(['name' => 'max', 'slug' => 'max']);
+});
+
 it('does not overwrite an existing slug when the name changes on edit', function () {
     $catalog = actingAsCatalogUser();
     $channel = Channel::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Webshop', 'slug' => 'custom-slug']);

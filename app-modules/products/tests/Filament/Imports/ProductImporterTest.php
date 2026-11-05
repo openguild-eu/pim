@@ -3,8 +3,13 @@
 declare(strict_types=1);
 
 use App\Models\Catalog;
+use Filament\Actions\ImportAction;
+use Filament\Actions\Testing\TestAction;
+use Illuminate\Http\UploadedFile;
+use Livewire\Livewire;
 use Modules\Categories\Models\Category;
 use Modules\Products\Filament\Imports\ProductImporter;
+use Modules\Products\Filament\Resources\Products\Pages\ListProducts;
 use Modules\Products\Models\Product;
 
 /**
@@ -167,9 +172,107 @@ it('always leaves attribute_set_id null, regardless of other column values', fun
     expect($record->attribute_set_id)->toBeNull();
 });
 
-it('requires sku, name, and a valid status', function () {
+it('imports a sku or name that is exactly at the 255 character max:255 boundary', function (string $field) {
     actingAsCatalogUser();
 
-    ProductImporter::test()->import(productImportRow(['sku' => '', 'name' => '', 'status' => 'archived']))
-        ->assertHasErrors(['sku' => 'required', 'name' => 'required', 'status' => 'in']);
+    $value = str_repeat('a', 255);
+
+    $record = ProductImporter::test()->import(productImportRow([$field => $value]))
+        ->assertImported()->getRecord();
+
+    expect($record->{$field})->toBe($value);
+})->with(['sku', 'name']);
+
+it('fails validation for an invalid sku, name, or status', function (array $overrides, string $field, string $rule) {
+    actingAsCatalogUser();
+
+    ProductImporter::test()->import(productImportRow($overrides))
+        ->assertHasErrors([$field => $rule]);
+})->with([
+    'sku missing' => [['sku' => ''], 'sku', 'required'],
+    'sku exceeds the 255 character max:255 boundary' => [['sku' => str_repeat('a', 256)], 'sku', 'max'],
+    'name missing' => [['name' => ''], 'name', 'required'],
+    'name exceeds the 255 character max:255 boundary' => [['name' => str_repeat('a', 256)], 'name', 'max'],
+    'status missing' => [['status' => ''], 'status', 'required'],
+    'status outside draft/published' => [['status' => 'archived'], 'status', 'in'],
+]);
+
+/**
+ * CSV content whose header row exactly matches every declared import
+ * column name, so Filament's default header-matching auto-maps every
+ * column to itself once uploaded — overridden selectively below to
+ * exercise required-mapping behavior.
+ */
+function productImportCsv(): UploadedFile
+{
+    return UploadedFile::fake()->createWithContent(
+        'products.csv',
+        "sku,name,slug,status,price,description,category_slugs\nSKU-1,Running Shoes,,draft,,,\n",
+    );
+}
+
+it('fails with a form error when the sku column is left unmapped, and dispatches nothing', function () {
+    actingAsCatalogUser();
+    $imports = ImportAction::fake();
+
+    Livewire::test(ListProducts::class)
+        ->mountAction(TestAction::make('import')->table())
+        ->fillForm(['file' => productImportCsv()])
+        ->fillForm(['columnMap' => [
+            'sku' => null,
+            'name' => 'name',
+            'slug' => 'slug',
+            'status' => 'status',
+            'price' => 'price',
+            'description' => 'description',
+            'category_slugs' => 'category_slugs',
+        ]])
+        ->callMountedAction()
+        ->assertHasFormErrors(['columnMap.sku' => 'required']);
+
+    $imports->assertNothingDispatched();
+});
+
+it('fails with a form error when the name column is left unmapped, and dispatches nothing', function () {
+    actingAsCatalogUser();
+    $imports = ImportAction::fake();
+
+    Livewire::test(ListProducts::class)
+        ->mountAction(TestAction::make('import')->table())
+        ->fillForm(['file' => productImportCsv()])
+        ->fillForm(['columnMap' => [
+            'sku' => 'sku',
+            'name' => null,
+            'slug' => 'slug',
+            'status' => 'status',
+            'price' => 'price',
+            'description' => 'description',
+            'category_slugs' => 'category_slugs',
+        ]])
+        ->callMountedAction()
+        ->assertHasFormErrors(['columnMap.name' => 'required']);
+
+    $imports->assertNothingDispatched();
+});
+
+it('succeeds when the optional slug and category_slugs columns are left unmapped', function () {
+    actingAsCatalogUser();
+    $imports = ImportAction::fake();
+
+    Livewire::test(ListProducts::class)
+        ->mountAction(TestAction::make('import')->table())
+        ->fillForm(['file' => productImportCsv()])
+        ->fillForm(['columnMap' => [
+            'sku' => 'sku',
+            'name' => 'name',
+            'slug' => null,
+            'status' => 'status',
+            'price' => 'price',
+            'description' => 'description',
+            'category_slugs' => null,
+        ]])
+        ->callMountedAction()
+        ->assertHasNoFormErrors();
+
+    $imports->assertDispatched(ProductImporter::class);
 });

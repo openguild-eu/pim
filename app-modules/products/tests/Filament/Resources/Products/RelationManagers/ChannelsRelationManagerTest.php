@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\Catalog;
 use Filament\Actions\Testing\TestAction;
+use Filament\Forms\Components\Select;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -11,6 +12,33 @@ use Modules\Channels\Models\Channel;
 use Modules\Products\Filament\Resources\Products\Pages\EditProduct;
 use Modules\Products\Filament\Resources\Products\RelationManagers\ChannelsRelationManager;
 use Modules\Products\Models\Product;
+
+it('excludes a channel from a different catalog from the attach record select search results', function () {
+    $otherCatalog = Catalog::factory()->create();
+    $foreignChannel = Channel::factory()->create([
+        'catalog_id' => $otherCatalog->id,
+        'name' => 'Foreign Marketplace',
+    ]);
+
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $ownChannel = Channel::factory()->create([
+        'catalog_id' => $catalog->id,
+        'name' => 'Own Marketplace',
+    ]);
+
+    Livewire::test(ChannelsRelationManager::class, [
+        'ownerRecord' => $product,
+        'pageClass' => EditProduct::class,
+    ])
+        ->mountTableAction('attach')
+        ->assertFormFieldExists('recordId', function (Select $field) use ($ownChannel, $foreignChannel): bool {
+            $options = $field->getSearchResults('Marketplace');
+
+            return array_key_exists($ownChannel->id, $options)
+                && ! array_key_exists($foreignChannel->id, $options);
+        });
+});
 
 it('excludes a channel from a different catalog from the attach record select', function () {
     $otherCatalog = Catalog::factory()->create();

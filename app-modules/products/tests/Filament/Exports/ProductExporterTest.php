@@ -5,8 +5,10 @@ declare(strict_types=1);
 use App\Models\Catalog;
 use Filament\Actions\ExportAction;
 use Filament\Actions\ExportBulkAction;
+use Filament\Actions\Exports\Models\Export;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Modules\Attributes\Models\AttributeSet;
 use Modules\Categories\Models\Category;
@@ -120,4 +122,44 @@ it('captures only the bulk-selected records, unlike a plain header export', func
 
         return true;
     });
+});
+
+it('produces a downloadable CSV export file when the export runs to completion', function () {
+    Storage::fake('local');
+
+    $catalog = actingAsCatalogUser();
+    Product::factory()->create(['catalog_id' => $catalog->id]);
+
+    Livewire::test(ListProducts::class)
+        ->callAction(TestAction::make('export')->table())
+        ->assertHasNoFormErrors();
+
+    $export = Export::query()->sole();
+
+    expect($export->successful_rows)->toBe(1);
+
+    $csvFiles = collect(Storage::disk($export->file_disk)->allFiles($export->getFileDirectory()))
+        ->reject(fn (string $path): bool => str($path)->endsWith('headers.csv'))
+        ->filter(fn (string $path): bool => str($path)->endsWith('.csv'));
+
+    expect($csvFiles)->not->toBeEmpty();
+});
+
+it('produces a downloadable XLSX export file when the export runs to completion', function () {
+    Storage::fake('local');
+
+    $catalog = actingAsCatalogUser();
+    Product::factory()->create(['catalog_id' => $catalog->id]);
+
+    Livewire::test(ListProducts::class)
+        ->callAction(TestAction::make('export')->table())
+        ->assertHasNoFormErrors();
+
+    $export = Export::query()->sole();
+
+    expect($export->successful_rows)->toBe(1);
+
+    $xlsxPath = $export->getFileDirectory().DIRECTORY_SEPARATOR."{$export->file_name}.xlsx";
+
+    expect(Storage::disk($export->file_disk)->exists($xlsxPath))->toBeTrue();
 });

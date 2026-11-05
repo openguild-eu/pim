@@ -54,6 +54,28 @@ it('requires the slug to be unique within the same catalog', function () {
         ->assertHasFormErrors(['slug']);
 });
 
+dataset('attribute_set_max_length_fields', ['name', 'slug']);
+
+it('accepts a 255 character value and rejects a 256 character value', function (string $field) {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateAttributeSet::class)
+        ->fillForm([
+            'name' => $field === 'name' ? str_repeat('a', 255) : 'Apparel 255',
+            'slug' => $field === 'slug' ? str_repeat('a', 255) : 'apparel-255',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    Livewire::test(CreateAttributeSet::class)
+        ->fillForm([
+            'name' => $field === 'name' ? str_repeat('a', 256) : 'Apparel 256',
+            'slug' => $field === 'slug' ? str_repeat('a', 256) : 'apparel-256',
+        ])
+        ->call('create')
+        ->assertHasFormErrors([$field => 'max']);
+})->with('attribute_set_max_length_fields');
+
 it('derives the slug from the name only on create', function () {
     actingAsCatalogUser();
 

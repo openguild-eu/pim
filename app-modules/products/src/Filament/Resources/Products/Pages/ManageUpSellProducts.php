@@ -31,6 +31,7 @@ class ManageUpSellProducts extends ManageRelatedRecords
         return $table
             ->recordTitleAttribute('name')
             ->reorderable('position')
+            ->inverseRelationship('upSellProducts')
             ->columns([
                 TextColumn::make('sku')
                     ->searchable(),

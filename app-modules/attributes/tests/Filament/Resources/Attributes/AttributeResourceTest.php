@@ -80,6 +80,39 @@ it('allows the same code in two different catalogs', function () {
     $this->assertDatabaseHas('attributes', ['code' => 'color']);
 });
 
+dataset('attribute_max_length_fields', ['code', 'label']);
+
+it('accepts a 255 character value and rejects a 256 character value', function (string $field) {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateAttribute::class)
+        ->fillForm([
+            'code' => $field === 'code' ? str_repeat('a', 255) : 'color-255',
+            'label' => $field === 'label' ? str_repeat('a', 255) : 'Color 255',
+            'type' => 'text',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    Livewire::test(CreateAttribute::class)
+        ->fillForm([
+            'code' => $field === 'code' ? str_repeat('a', 256) : 'color-256',
+            'label' => $field === 'label' ? str_repeat('a', 256) : 'Color 256',
+            'type' => 'text',
+        ])
+        ->call('create')
+        ->assertHasFormErrors([$field => 'max']);
+})->with('attribute_max_length_fields');
+
+it('rejects a type that is not one of the AttributeType enum values', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateAttribute::class)
+        ->fillForm(['code' => 'color', 'label' => 'Color', 'type' => 'not-a-real-type'])
+        ->call('create')
+        ->assertHasFormErrors(['type' => 'The selected type is invalid.']);
+});
+
 it('does not show or require options for a text attribute', function () {
     actingAsCatalogUser();
 

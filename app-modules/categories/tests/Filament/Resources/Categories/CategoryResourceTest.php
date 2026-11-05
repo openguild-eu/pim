@@ -76,6 +76,24 @@ it('allows the same slug in two different catalogs', function () {
     $this->assertDatabaseHas('categories', ['slug' => 'shoes']);
 });
 
+it('accepts a 255 character name and slug', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateCategory::class)
+        ->fillForm(['name' => str_repeat('a', 255), 'slug' => str_repeat('a', 255)])
+        ->call('create')
+        ->assertHasNoFormErrors(['name', 'slug']);
+});
+
+it('rejects a name and slug over 255 characters', function () {
+    actingAsCatalogUser();
+
+    Livewire::test(CreateCategory::class)
+        ->fillForm(['name' => str_repeat('a', 256), 'slug' => str_repeat('a', 256)])
+        ->call('create')
+        ->assertHasFormErrors(['name' => 'max', 'slug' => 'max']);
+});
+
 it('derives the slug from the name only on create', function () {
     actingAsCatalogUser();
 
@@ -164,6 +182,42 @@ it('allows deleting a category whose only subcategories are already trashed', fu
         ->callAction(TestAction::make(DeleteAction::class)->table($parent));
 
     $this->assertSoftDeleted($parent);
+});
+
+it('blocks the entire bulk delete when any selected record has children', function () {
+    $catalog = actingAsCatalogUser();
+    $childless = Category::factory()->create(['catalog_id' => $catalog->id]);
+    $parentWithChildren = Category::factory()->create(['catalog_id' => $catalog->id]);
+    Category::factory()->create(['catalog_id' => $catalog->id, 'parent_id' => $parentWithChildren->id]);
+
+    Livewire::test(ListCategories::class)
+        ->selectTableRecords([$childless, $parentWithChildren])
+        ->callAction(TestAction::make('delete')->table()->bulk())
+        ->assertNotified();
+
+    $this->assertDatabaseHas('categories', ['id' => $childless->id, 'deleted_at' => null]);
+    $this->assertDatabaseHas('categories', ['id' => $parentWithChildren->id, 'deleted_at' => null]);
+});
+
+it('makes a restored category reselectable as a parent after being trashed', function () {
+    $catalog = actingAsCatalogUser();
+    $other = Category::factory()->create(['catalog_id' => $catalog->id]);
+    $category = Category::factory()->create(['catalog_id' => $catalog->id]);
+    $category->delete();
+
+    Livewire::test(EditCategory::class, ['record' => $other->getRouteKey()])
+        ->fillForm(['parent_id' => $category->id])
+        ->call('save')
+        ->assertHasFormErrors(['parent_id']);
+
+    $category->restore();
+
+    Livewire::test(EditCategory::class, ['record' => $other->getRouteKey()])
+        ->fillForm(['parent_id' => $category->id])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $this->assertDatabaseHas('categories', ['id' => $other->id, 'parent_id' => $category->id]);
 });
 
 it('renders only direct children on the subcategories page', function () {

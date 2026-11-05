@@ -31,6 +31,7 @@ class ManageCrossSellProducts extends ManageRelatedRecords
         return $table
             ->recordTitleAttribute('name')
             ->reorderable('position')
+            ->inverseRelationship('crossSellProducts')
             ->columns([
                 TextColumn::make('sku')
                     ->searchable(),

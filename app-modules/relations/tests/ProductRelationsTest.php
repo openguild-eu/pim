@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\Catalog;
 use Filament\Actions\Testing\TestAction;
+use Filament\Forms\Components\Select;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Livewire\Livewire;
 use Modules\Products\Filament\Resources\Products\Pages\ManageCrossSellProducts;
@@ -36,6 +37,33 @@ it('excludes a product from a different catalog from the attach record select', 
     Livewire::test($pageClass, ['record' => $product->getRouteKey()])
         ->callAction(TestAction::make('attach')->table(), data: ['recordId' => $foreignProduct->id])
         ->assertHasActionErrors(['recordId']);
+})->with('relation_pages');
+
+it('excludes a product from a different catalog from the attach record select\'s search results, even when searching by its sku or name', function (string $pageClass) {
+    $otherCatalog = Catalog::factory()->create();
+    $foreignProduct = Product::factory()->create(['catalog_id' => $otherCatalog->id]);
+
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+
+    $livewire = Livewire::test($pageClass, ['record' => $product->getRouteKey()])
+        ->mountAction(TestAction::make('attach')->table());
+
+    $livewire->assertSchemaComponentExists(
+        'recordId',
+        checkComponentUsing: fn (Select $component): bool => ! array_key_exists(
+            $foreignProduct->id,
+            $component->getSearchResults($foreignProduct->sku),
+        ),
+    );
+
+    $livewire->assertSchemaComponentExists(
+        'recordId',
+        checkComponentUsing: fn (Select $component): bool => ! array_key_exists(
+            $foreignProduct->id,
+            $component->getSearchResults($foreignProduct->name),
+        ),
+    );
 })->with('relation_pages');
 
 it('attaching under one type does not leak into the other two types', function () {

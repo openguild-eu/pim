@@ -31,6 +31,7 @@ class ManageRelatedProducts extends ManageRelatedRecords
         return $table
             ->recordTitleAttribute('name')
             ->reorderable('position')
+            ->inverseRelationship('relatedProducts')
             ->columns([
                 TextColumn::make('sku')
                     ->searchable(),
