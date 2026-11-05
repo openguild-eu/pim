@@ -8,6 +8,7 @@ use App\Models\Subdomain;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
+use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\HttpFoundation\Response;
 
 class IdentifySubdomain
@@ -50,6 +51,7 @@ class IdentifySubdomain
 
         // Store in container as instance
         app()->instance('current_subdomain', $subdomainModel);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($subdomainModel->id);
 
         return $next($request);
     }

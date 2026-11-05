@@ -23,7 +23,8 @@
         "modules/relations": "*",
         "modules/users": "*",
         "spatie/laravel-activitylog": "^5.0",
-        "spatie/laravel-medialibrary": "^11.0"
+        "spatie/laravel-medialibrary": "^11.0",
+        "spatie/laravel-permission": "^8.4"
     },
     "require-dev": {
         "barryvdh/laravel-ide-helper": "^3.7",
