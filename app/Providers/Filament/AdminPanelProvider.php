@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use AlizHarb\ActivityLog\ActivityLogPlugin;
+use App\Filament\Pages\Tenancy\RegisterCatalog;
 use App\Http\Middleware\IdentifySubdomain;
 use App\Models\Catalog;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
@@ -39,6 +40,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->spa()
             ->tenant(Catalog::class, ownershipRelationship: 'catalog', slugAttribute: 'name')
+            ->tenantRegistration(RegisterCatalog::class)
             ->login()
             ->authGuard('web')
             ->colors([
@@ -65,6 +67,8 @@ class AdminPanelProvider extends PanelProvider
             ->navigationGroups([
                 NavigationGroup::make()
                     ->label('Catalog'),
+                NavigationGroup::make()
+                    ->label('Administration'),
                 NavigationGroup::make()
                     ->label('Settings'),
             ])
