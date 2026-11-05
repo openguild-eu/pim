@@ -43,6 +43,7 @@ class DatabaseSeeder extends Seeder
             $catalog = Catalog::create([
                 'subdomain_id' => $subdomain->id,
                 'name' => 'Default Catalog',
+                'slug' => Catalog::resolveUniqueSlug('Default Catalog', $subdomain->id),
             ]);
 
             $user = User::create([
