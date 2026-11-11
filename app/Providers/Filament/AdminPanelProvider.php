@@ -7,6 +7,7 @@ use App\Filament\Pages\Tenancy\RegisterCatalog;
 use App\Http\Middleware\IdentifySubdomain;
 use App\Models\Catalog;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
+use Filament\FontProviders\GoogleFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -15,7 +16,6 @@ use Filament\Navigation\NavigationGroup;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
-use Filament\Support\Colors\Color;
 use Filament\Widgets\AccountWidget;
 use Filament\Widgets\FilamentInfoWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -33,7 +33,12 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('/')
-            ->brandName('PIM')
+            ->viteTheme('resources/css/filament/admin/theme.css')
+            ->brandName('OpenGuild PIM')
+            ->brandLogo(asset('images/brand/openguild-logo-color.svg'))
+            ->darkModeBrandLogo(asset('images/brand/openguild-logo-white.svg'))
+            ->brandLogoHeight('2rem')
+            ->favicon(asset('images/brand/openguild-app-icon-32.png'))
             ->profile()
             ->multiFactorAuthentication([
                 AppAuthentication::make(),
@@ -44,8 +49,10 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->authGuard('web')
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => '#F2B134',
+                'info' => '#2547D0',
             ])
+            ->font('Manrope', provider: GoogleFontProvider::class)
             ->plugins([
                 ActivityLogPlugin::make()
                     ->navigationGroup('Settings'),
