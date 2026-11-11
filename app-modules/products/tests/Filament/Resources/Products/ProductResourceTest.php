@@ -244,6 +244,52 @@ it('filters by status', function () {
         ->assertCanNotSeeTableRecords([$draft]);
 });
 
+it('filters products by a single selected category', function () {
+    $catalog = actingAsCatalogUser();
+    $categoryA = Category::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Shoes']);
+    $categoryB = Category::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Hats']);
+    $inA = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $inA->categories()->attach($categoryA->id);
+    $inB = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $inB->categories()->attach($categoryB->id);
+
+    Livewire::test(ListProducts::class)
+        ->filterTable('categories', [$categoryA->id])
+        ->assertCanSeeTableRecords([$inA])
+        ->assertCanNotSeeTableRecords([$inB]);
+});
+
+it('shows products matching any of multiple selected categories', function () {
+    $catalog = actingAsCatalogUser();
+    $categoryA = Category::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Shoes']);
+    $categoryB = Category::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Hats']);
+    $categoryC = Category::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Belts']);
+    $inA = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $inA->categories()->attach($categoryA->id);
+    $inB = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $inB->categories()->attach($categoryB->id);
+    $inC = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $inC->categories()->attach($categoryC->id);
+
+    Livewire::test(ListProducts::class)
+        ->filterTable('categories', [$categoryA->id, $categoryB->id])
+        ->assertCanSeeTableRecords([$inA, $inB])
+        ->assertCanNotSeeTableRecords([$inC]);
+});
+
+it('the "No category" filter option shows only products with no category assigned', function () {
+    $catalog = actingAsCatalogUser();
+    $category = Category::factory()->create(['catalog_id' => $catalog->id]);
+    $withCategory = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $withCategory->categories()->attach($category->id);
+    $withoutCategory = Product::factory()->create(['catalog_id' => $catalog->id]);
+
+    Livewire::test(ListProducts::class)
+        ->filterTable('categories', ['__empty'])
+        ->assertCanSeeTableRecords([$withoutCategory])
+        ->assertCanNotSeeTableRecords([$withCategory]);
+});
+
 it('can sort products by sku, name, and price', function () {
     $catalog = actingAsCatalogUser();
     Product::factory()->count(3)->create(['catalog_id' => $catalog->id]);

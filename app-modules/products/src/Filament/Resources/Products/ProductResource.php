@@ -179,6 +179,12 @@ class ProductResource extends Resource
                 TrashedFilter::make(),
                 SelectFilter::make('status')
                     ->options(ProductStatus::class),
+                SelectFilter::make('categories')
+                    ->relationship(name: 'categories', titleAttribute: 'name', hasEmptyOption: true)
+                    ->multiple()
+                    ->searchable()
+                    ->preload()
+                    ->emptyRelationshipOptionLabel('No category'),
             ])
             ->headerActions([
                 ImportAction::make()
