@@ -13,18 +13,11 @@ use Filament\Actions\Exports\Enums\ExportFormat;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\ImportAction;
 use Filament\Actions\RestoreBulkAction;
-use Filament\Forms\Components\DatePicker;
-use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Toggle;
 use Filament\Resources\Pages\Page;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Flex;
-use Filament\Schemas\Components\Group;
-use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -34,11 +27,8 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Str;
-use Modules\Attributes\Models\Attribute;
-use Modules\Attributes\Models\AttributeSet;
 use Modules\Products\Enums\ProductStatus;
 use Modules\Products\Filament\Exports\ProductExporter;
 use Modules\Products\Filament\Imports\ProductImporter;
@@ -47,6 +37,7 @@ use Modules\Products\Filament\Resources\Products\Pages\EditProduct;
 use Modules\Products\Filament\Resources\Products\Pages\ListProducts;
 use Modules\Products\Filament\Resources\Products\Pages\ManageCrossSellProducts;
 use Modules\Products\Filament\Resources\Products\Pages\ManageProductActivities;
+use Modules\Products\Filament\Resources\Products\Pages\ManageProductAttributes;
 use Modules\Products\Filament\Resources\Products\Pages\ManageProductImages;
 use Modules\Products\Filament\Resources\Products\Pages\ManageRelatedProducts;
 use Modules\Products\Filament\Resources\Products\Pages\ManageUpSellProducts;
@@ -70,105 +61,55 @@ class ProductResource extends Resource
         return $schema
             ->columns(1)
             ->components([
-                Flex::make([
-                    Section::make('Attributes')
-                        ->grow(false)
-                        ->schema([
-                            Select::make('attribute_set_id')
-                                ->relationship(name: 'attributeSet', titleAttribute: 'name')
-                                ->label('Attribute set')
-                                ->live()
-                                ->preload()
-                                ->searchable(),
+                TextInput::make('name')
+                    ->required()
+                    ->maxLength(255)
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(function (Set $set, ?string $state, string $operation): void {
+                        if ($operation === 'create') {
+                            $set('slug', Str::slug((string) $state));
+                        }
+                    }),
 
-                            Group::make(function (Get $get): array {
-                                $attributeSetId = $get('attribute_set_id');
+                TextInput::make('sku')
+                    ->required()
+                    ->maxLength(255)
+                    ->scopedUnique(ignoreRecord: true)
+                    ->helperText('Unique stock-keeping unit code for this catalog.'),
 
-                                if (blank($attributeSetId)) {
-                                    return [];
-                                }
+                TextInput::make('slug')
+                    ->required()
+                    ->maxLength(255)
+                    ->alphaDash()
+                    ->scopedUnique(ignoreRecord: true)
+                    ->helperText('Used in URLs. Lowercase letters, numbers, and dashes only.'),
 
-                                $attributeSet = AttributeSet::query()
-                                    ->with(['attributes' => fn (BelongsToMany $query) => $query->orderByPivot('position')])
-                                    ->find($attributeSetId);
+                Select::make('status')
+                    ->required()
+                    ->options(ProductStatus::class)
+                    ->default(ProductStatus::Draft),
 
-                                if (! $attributeSet) {
-                                    return [];
-                                }
+                TextInput::make('price')
+                    ->numeric()
+                    ->minValue(0)
+                    ->prefix('cents')
+                    ->helperText('Stored as integer cents, e.g. 1999 = $19.99.'),
 
-                                return $attributeSet->attributes
-                                    ->map(function (Attribute $attribute): Field {
-                                        $name = "attribute_values.{$attribute->code}";
-                                        $isRequired = (bool) $attribute->pivot->is_required;
+                Textarea::make('description')
+                    ->rows(4)
+                    ->columnSpanFull(),
 
-                                        $field = match ($attribute->type->value) {
-                                            'text' => TextInput::make($name),
-                                            'textarea' => Textarea::make($name),
-                                            'number' => TextInput::make($name)->numeric(),
-                                            'boolean' => Toggle::make($name),
-                                            'date' => DatePicker::make($name),
-                                            'select' => Select::make($name)
-                                                ->options(collect($attribute->options)->pluck('label', 'value')),
-                                            'multiselect' => Select::make($name)
-                                                ->multiple()
-                                                ->options(collect($attribute->options)->pluck('label', 'value')),
-                                        };
+                Select::make('categories')
+                    ->relationship(name: 'categories', titleAttribute: 'name')
+                    ->multiple()
+                    ->searchable()
+                    ->preload(),
 
-                                        return $field
-                                            ->label($attribute->label)
-                                            ->required($isRequired);
-                                    })
-                                    ->all();
-                            })
-                                ->visible(fn (Get $get): bool => filled($get('attribute_set_id'))),
-                        ]),
-
-                    Group::make([
-                        TextInput::make('name')
-                            ->required()
-                            ->maxLength(255)
-                            ->live(onBlur: true)
-                            ->afterStateUpdated(function (Set $set, ?string $state, string $operation): void {
-                                if ($operation === 'create') {
-                                    $set('slug', Str::slug((string) $state));
-                                }
-                            }),
-
-                        TextInput::make('sku')
-                            ->required()
-                            ->maxLength(255)
-                            ->scopedUnique(ignoreRecord: true)
-                            ->helperText('Unique stock-keeping unit code for this catalog.'),
-
-                        TextInput::make('slug')
-                            ->required()
-                            ->maxLength(255)
-                            ->alphaDash()
-                            ->scopedUnique(ignoreRecord: true)
-                            ->helperText('Used in URLs. Lowercase letters, numbers, and dashes only.'),
-
-                        Select::make('status')
-                            ->required()
-                            ->options(ProductStatus::class)
-                            ->default(ProductStatus::Draft),
-
-                        TextInput::make('price')
-                            ->numeric()
-                            ->minValue(0)
-                            ->prefix('cents')
-                            ->helperText('Stored as integer cents, e.g. 1999 = $19.99.'),
-
-                        Textarea::make('description')
-                            ->rows(4)
-                            ->columnSpanFull(),
-
-                        Select::make('categories')
-                            ->relationship(name: 'categories', titleAttribute: 'name')
-                            ->multiple()
-                            ->searchable()
-                            ->preload(),
-                    ]),
-                ])->from('md'),
+                Select::make('attribute_set_id')
+                    ->relationship(name: 'attributeSet', titleAttribute: 'name')
+                    ->label('Attribute set')
+                    ->preload()
+                    ->searchable(),
             ]);
     }
 
@@ -255,6 +196,7 @@ class ProductResource extends Resource
             'create' => CreateProduct::route('/create'),
             'edit' => EditProduct::route('/{record}/edit'),
             'images' => ManageProductImages::route('/{record}/images'),
+            'attributes' => ManageProductAttributes::route('/{record}/attributes'),
             'related-products' => ManageRelatedProducts::route('/{record}/related-products'),
             'cross-sells' => ManageCrossSellProducts::route('/{record}/cross-sells'),
             'up-sells' => ManageUpSellProducts::route('/{record}/up-sells'),
@@ -269,13 +211,20 @@ class ProductResource extends Resource
 
     public static function getRecordSubNavigation(Page $page): array
     {
-        return $page->generateNavigationItems([
+        $items = [
             EditProduct::class,
             ManageProductImages::class,
-            ManageRelatedProducts::class,
-            ManageCrossSellProducts::class,
-            ManageUpSellProducts::class,
-            ManageProductActivities::class,
-        ]);
+        ];
+
+        if (filled($page->getRecord()->attribute_set_id)) {
+            $items[] = ManageProductAttributes::class;
+        }
+
+        $items[] = ManageRelatedProducts::class;
+        $items[] = ManageCrossSellProducts::class;
+        $items[] = ManageUpSellProducts::class;
+        $items[] = ManageProductActivities::class;
+
+        return $page->generateNavigationItems($items);
     }
 }

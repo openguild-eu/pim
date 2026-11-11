@@ -7,9 +7,7 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\RestoreAction;
 use Filament\Actions\Testing\TestAction;
 use Filament\Forms\Components\Field;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\SpatieMediaLibraryFileUpload;
-use Filament\Schemas\Components\Section;
 use Filament\Tables\Columns\SpatieMediaLibraryImageColumn;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
@@ -24,6 +22,7 @@ use Modules\Products\Enums\ProductStatus;
 use Modules\Products\Filament\Resources\Products\Pages\CreateProduct;
 use Modules\Products\Filament\Resources\Products\Pages\EditProduct;
 use Modules\Products\Filament\Resources\Products\Pages\ListProducts;
+use Modules\Products\Filament\Resources\Products\Pages\ManageProductAttributes;
 use Modules\Products\Filament\Resources\Products\Pages\ManageProductImages;
 use Modules\Products\Filament\Resources\Products\ProductResource;
 use Modules\Products\Models\Product;
@@ -168,28 +167,6 @@ it('does not write to a product in a different catalog when the edit form is sub
     expect($product->refresh()->name)->toBe('Original Name');
 });
 
-it('configures the attribute_set_id select as live so the attributes section reacts to changes', function () {
-    actingAsCatalogUser();
-
-    Livewire::test(CreateProduct::class)
-        ->assertSchemaComponentExists(
-            'attribute_set_id',
-            checkComponentUsing: fn (Select $component): bool => $component->isLive(),
-        );
-});
-
-it('keeps the Attributes sidebar fixed-width while the product details column grows', function () {
-    actingAsCatalogUser();
-
-    $test = Livewire::test(CreateProduct::class);
-
-    $section = collect($test->instance()->getSchema('form')->getFlatComponents(withHidden: true))
-        ->first(fn ($component): bool => $component instanceof Section && $component->getHeading() === 'Attributes');
-
-    expect($section)->not->toBeNull()
-        ->and($section->canGrow())->toBeFalse();
-});
-
 it('persists category assignment on create', function () {
     $catalog = actingAsCatalogUser();
     $categoryA = Category::factory()->create(['catalog_id' => $catalog->id]);
@@ -317,7 +294,7 @@ it('restoring a soft-deleted product makes it visible again', function () {
     Livewire::test(ListProducts::class)->assertCanSeeTableRecords([$product]);
 });
 
-it('required attribute fields reflect that attribute set\'s own pivot is_required value', function () {
+it('required attribute fields on the Attributes page reflect that attribute set\'s own pivot is_required value', function () {
     $catalog = actingAsCatalogUser();
     $attribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'material']);
     $setRequiring = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
@@ -325,10 +302,13 @@ it('required attribute fields reflect that attribute set\'s own pivot is_require
     $setRequiring->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => true]);
     $setNotRequiring->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => false]);
 
-    Livewire::test(CreateProduct::class)
-        ->fillForm(['attribute_set_id' => $setRequiring->id])
-        ->assertFormFieldExists('attribute_values.material', fn (Field $field): bool => $field->isRequired())
-        ->fillForm(['attribute_set_id' => $setNotRequiring->id])
+    $productRequiring = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $setRequiring->id]);
+    $productNotRequiring = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $setNotRequiring->id]);
+
+    Livewire::test(ManageProductAttributes::class, ['record' => $productRequiring->getRouteKey()])
+        ->assertFormFieldExists('attribute_values.material', fn (Field $field): bool => $field->isRequired());
+
+    Livewire::test(ManageProductAttributes::class, ['record' => $productNotRequiring->getRouteKey()])
         ->assertFormFieldExists('attribute_values.material', fn (Field $field): bool => ! $field->isRequired());
 });
 
@@ -341,7 +321,8 @@ it('switching attribute sets away and back preserves the original set\'s saved v
     $setA->attributes()->attach($colorAttribute->id, ['position' => 0, 'is_required' => false]);
     $setB->attributes()->attach($materialAttribute->id, ['position' => 0, 'is_required' => false]);
 
-    // Create under set A, filling A's attribute.
+    // Create under set A. attribute_set_id lives on the main Create form;
+    // attribute_values no longer does.
     Livewire::test(CreateProduct::class)
         ->fillForm([
             'sku' => 'SKU-1',
@@ -349,19 +330,27 @@ it('switching attribute sets away and back preserves the original set\'s saved v
             'slug' => 'boots',
             'status' => 'draft',
             'attribute_set_id' => $setA->id,
-            'attribute_values' => ['color' => 'red'],
         ])
         ->call('create')
         ->assertHasNoFormErrors();
 
     $product = Product::query()->where('sku', 'SKU-1')->first();
 
-    // Switch to set B and fill B's attribute.
+    // Fill set A's attribute on the dedicated Attributes page.
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+        ->fillForm(['attribute_values' => ['color' => 'red']])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    // Switch to set B on the main Edit page (no attribute_values field there).
     Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
-        ->fillForm([
-            'attribute_set_id' => $setB->id,
-            'attribute_values' => ['material' => 'cotton'],
-        ])
+        ->fillForm(['attribute_set_id' => $setB->id])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    // Fill set B's attribute on the (now set-B-scoped) Attributes page.
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+        ->fillForm(['attribute_values' => ['material' => 'cotton']])
         ->call('save')
         ->assertHasNoFormErrors();
 
@@ -372,21 +361,21 @@ it('switching attribute sets away and back preserves the original set\'s saved v
     expect($colorValue?->value_text)->toBe('red')
         ->and($materialValue?->value_text)->toBe('cotton');
 
-    // Switching back to A re-hydrates A's original, untouched value.
-    // mutateFormDataBeforeFill() hydrates every still-present
-    // AttributeValue row regardless of which set is now selected (per the
-    // "old rows are never touched" decision) — the Attributes section's
-    // own visibility then hides whichever fields aren't in the current
-    // set, so only `color`'s value, not the full state shape, is the
-    // thing under test here.
+    // Switch back to A on the Edit page...
     Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
         ->fillForm(['attribute_set_id' => $setA->id])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    // ...and the Attributes page (now set-A-scoped again) re-hydrates A's
+    // original, untouched value.
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
         ->assertSchemaStateSet(function (array $state): void {
             expect($state['attribute_values']['color'])->toBe('red');
         });
 });
 
-it('silently skips an attribute_values code that does not belong to the current attribute set and still saves the product', function () {
+it('silently skips an attribute_values code that does not belong to the current attribute set and still saves known values', function () {
     $catalog = actingAsCatalogUser();
     $attribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'color']);
     $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
@@ -395,17 +384,16 @@ it('silently skips an attribute_values code that does not belong to the current 
 
     // "nonexistent_code" belongs to no Attribute on this (or any)
     // AttributeSet — persistAttributeValues()'s `if (! $attribute)
-    // continue;` guard must skip it rather than erroring, while the
-    // product's own fillable columns still save correctly.
-    Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+    // continue;` guard must skip it rather than erroring, while a real
+    // code on the current set still saves correctly in the same submit.
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
         ->fillForm([
-            'name' => 'Renamed Product',
-            'attribute_values' => ['nonexistent_code' => 'tampered'],
+            'attribute_values' => ['color' => 'red', 'nonexistent_code' => 'tampered'],
         ])
         ->call('save')
         ->assertHasNoFormErrors();
 
-    $this->assertDatabaseHas('products', ['id' => $product->id, 'name' => 'Renamed Product']);
+    $this->assertDatabaseHas('attribute_values', ['product_id' => $product->id, 'value_text' => 'red']);
     $this->assertDatabaseMissing('attribute_values', ['product_id' => $product->id, 'value_text' => 'tampered']);
 });
 
@@ -569,4 +557,58 @@ it('shows an Images sub-navigation tab on the product Edit page, alongside Relat
     )->map(fn ($item) => $item->getLabel())->all();
 
     expect($subNavigationLabels)->toContain('Images', 'Related Products');
+});
+
+it('hides the Attributes sub-navigation entry when no attribute set is assigned', function () {
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => null]);
+
+    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
+    $test->assertOk();
+
+    $subNavigationLabels = collect(
+        ProductResource::getRecordSubNavigation($test->instance())
+    )->map(fn ($item) => $item->getLabel())->all();
+
+    expect($subNavigationLabels)->not->toContain('Attributes');
+});
+
+it('shows the Attributes sub-navigation entry once an attribute set is assigned', function () {
+    $catalog = actingAsCatalogUser();
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+
+    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
+    $test->assertOk();
+
+    $subNavigationLabels = collect(
+        ProductResource::getRecordSubNavigation($test->instance())
+    )->map(fn ($item) => $item->getLabel())->all();
+
+    expect($subNavigationLabels)->toContain('Attributes');
+});
+
+it('does not write attribute values to a product in a different catalog when the attributes page form is submitted directly', function () {
+    $otherCatalog = Catalog::factory()->create();
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $otherCatalog->id]);
+    $attribute = Attribute::factory()->create(['catalog_id' => $otherCatalog->id, 'code' => 'color']);
+    $attributeSet->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => false]);
+    $product = Product::factory()->create(['catalog_id' => $otherCatalog->id, 'attribute_set_id' => $attributeSet->id]);
+
+    actingAsCatalogUser();
+
+    expect(fn () => Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+        ->fillForm(['attribute_values' => ['color' => 'intrusion']])
+        ->call('save'))
+        ->toThrow(ModelNotFoundException::class);
+
+    $this->assertDatabaseMissing('attribute_values', ['product_id' => $product->id, 'value_text' => 'intrusion']);
+});
+
+it('loads the Attributes page without error when no attribute set is assigned', function () {
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => null]);
+
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+        ->assertOk();
 });
