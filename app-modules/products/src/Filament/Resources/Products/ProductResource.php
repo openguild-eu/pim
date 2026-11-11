@@ -16,7 +16,6 @@ use Filament\Actions\RestoreBulkAction;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\SpatieMediaLibraryFileUpload;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -46,6 +45,7 @@ use Modules\Products\Filament\Resources\Products\Pages\EditProduct;
 use Modules\Products\Filament\Resources\Products\Pages\ListProducts;
 use Modules\Products\Filament\Resources\Products\Pages\ManageCrossSellProducts;
 use Modules\Products\Filament\Resources\Products\Pages\ManageProductActivities;
+use Modules\Products\Filament\Resources\Products\Pages\ManageProductImages;
 use Modules\Products\Filament\Resources\Products\Pages\ManageRelatedProducts;
 use Modules\Products\Filament\Resources\Products\Pages\ManageUpSellProducts;
 use Modules\Products\Filament\Resources\Products\RelationManagers\ChannelsRelationManager;
@@ -104,14 +104,6 @@ class ProductResource extends Resource
 
                 Textarea::make('description')
                     ->rows(4)
-                    ->columnSpanFull(),
-
-                SpatieMediaLibraryFileUpload::make('images')
-                    ->collection('images')
-                    ->conversion('thumb')
-                    ->multiple()
-                    ->reorderable()
-                    ->image()
                     ->columnSpanFull(),
 
                 Select::make('categories')
@@ -254,6 +246,7 @@ class ProductResource extends Resource
             'index' => ListProducts::route('/'),
             'create' => CreateProduct::route('/create'),
             'edit' => EditProduct::route('/{record}/edit'),
+            'images' => ManageProductImages::route('/{record}/images'),
             'related-products' => ManageRelatedProducts::route('/{record}/related-products'),
             'cross-sells' => ManageCrossSellProducts::route('/{record}/cross-sells'),
             'up-sells' => ManageUpSellProducts::route('/{record}/up-sells'),
@@ -270,6 +263,7 @@ class ProductResource extends Resource
     {
         return $page->generateNavigationItems([
             EditProduct::class,
+            ManageProductImages::class,
             ManageRelatedProducts::class,
             ManageCrossSellProducts::class,
             ManageUpSellProducts::class,

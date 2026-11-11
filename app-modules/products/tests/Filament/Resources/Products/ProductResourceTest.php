@@ -23,6 +23,7 @@ use Modules\Products\Enums\ProductStatus;
 use Modules\Products\Filament\Resources\Products\Pages\CreateProduct;
 use Modules\Products\Filament\Resources\Products\Pages\EditProduct;
 use Modules\Products\Filament\Resources\Products\Pages\ListProducts;
+use Modules\Products\Filament\Resources\Products\Pages\ManageProductImages;
 use Modules\Products\Filament\Resources\Products\ProductResource;
 use Modules\Products\Models\Product;
 
@@ -400,7 +401,7 @@ it('persists an uploaded image and synchronously generates the thumb conversion'
     $catalog = actingAsCatalogUser();
     $product = Product::factory()->create(['catalog_id' => $catalog->id]);
 
-    Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+    Livewire::test(ManageProductImages::class, ['record' => $product->getRouteKey()])
         ->fillForm(['images' => [UploadedFile::fake()->image('photo.jpg')]])
         ->call('save')
         ->assertHasNoFormErrors();
@@ -416,7 +417,7 @@ it('retrieves uploaded images in upload order with the first as primary', functi
     $catalog = actingAsCatalogUser();
     $product = Product::factory()->create(['catalog_id' => $catalog->id]);
 
-    Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+    Livewire::test(ManageProductImages::class, ['record' => $product->getRouteKey()])
         ->fillForm(['images' => [
             UploadedFile::fake()->image('a.jpg'),
             UploadedFile::fake()->image('b.jpg'),
@@ -434,7 +435,7 @@ it('retrieves uploaded images in upload order with the first as primary', functi
         ->and($media->pluck('order_column')->all())->toBe([1, 2, 3]);
 });
 
-it('changes the primary image when media is reordered via the Edit page form field and saved', function () {
+it('changes the primary image when media is reordered via the Images page form field and saved', function () {
     Storage::fake('public');
     $catalog = actingAsCatalogUser();
     $product = Product::factory()->create(['catalog_id' => $catalog->id]);
@@ -442,7 +443,7 @@ it('changes the primary image when media is reordered via the Edit page form fie
     $mediaB = $product->addMedia(UploadedFile::fake()->image('b.jpg'))->preservingOriginal()->toMediaCollection('images');
     $mediaC = $product->addMedia(UploadedFile::fake()->image('c.jpg'))->preservingOriginal()->toMediaCollection('images');
 
-    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
+    $test = Livewire::test(ManageProductImages::class, ['record' => $product->getRouteKey()]);
 
     // The `images` field hydrates from the record's media relationship on
     // mount, in ascending order_column order (a, b, c). Drive the reorder
@@ -475,7 +476,7 @@ it('renders the leading images table column with the first-in-order media thumbn
     $catalog = actingAsCatalogUser();
     $product = Product::factory()->create(['catalog_id' => $catalog->id]);
 
-    Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+    Livewire::test(ManageProductImages::class, ['record' => $product->getRouteKey()])
         ->fillForm(['images' => [
             UploadedFile::fake()->image('a.jpg'),
             UploadedFile::fake()->image('b.jpg'),
@@ -501,14 +502,14 @@ it('renders the leading images table column with the first-in-order media thumbn
         ->and($column->getImageUrl($state[0]))->toContain(pathinfo($firstMedia->getPath('thumb'), PATHINFO_BASENAME));
 });
 
-it('does not attach media to a product in a different catalog when the edit form is submitted directly', function () {
+it('does not attach media to a product in a different catalog when the images page form is submitted directly', function () {
     Storage::fake('public');
     $otherCatalog = Catalog::factory()->create();
     $product = Product::factory()->create(['catalog_id' => $otherCatalog->id]);
 
     actingAsCatalogUser();
 
-    expect(fn () => Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+    expect(fn () => Livewire::test(ManageProductImages::class, ['record' => $product->getRouteKey()])
         ->fillForm(['images' => [UploadedFile::fake()->image('intrusion.jpg')]])
         ->call('save'))
         ->toThrow(ModelNotFoundException::class);
@@ -517,9 +518,10 @@ it('does not attach media to a product in a different catalog when the edit form
 });
 
 it('configures the images field as a reorderable, multiple, image-only SpatieMediaLibraryFileUpload bound to the images collection', function () {
-    actingAsCatalogUser();
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
 
-    Livewire::test(CreateProduct::class)
+    Livewire::test(ManageProductImages::class, ['record' => $product->getRouteKey()])
         ->assertSchemaComponentExists(
             'images',
             checkComponentUsing: fn (SpatieMediaLibraryFileUpload $component): bool => $component->getCollection() === 'images'
@@ -539,4 +541,19 @@ it('configures the leading images table column as a SpatieMediaLibraryImageColum
                 && $column->getConversion() === 'thumb'
                 && $column->getLimit() === 1,
         );
+});
+
+it('shows an Images sub-navigation tab on the product Edit page, alongside Related Products', function () {
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+
+    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
+
+    $test->assertOk();
+
+    $subNavigationLabels = collect(
+        ProductResource::getRecordSubNavigation($test->instance())
+    )->map(fn ($item) => $item->getLabel())->all();
+
+    expect($subNavigationLabels)->toContain('Images', 'Related Products');
 });
