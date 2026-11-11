@@ -16,6 +16,7 @@ use Filament\Actions\RestoreBulkAction;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Navigation\NavigationItem;
 use Filament\Resources\Pages\Page;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Utilities\Set;
@@ -29,6 +30,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Str;
+use Modules\Attributes\Models\AttributeSet;
 use Modules\Products\Enums\ProductStatus;
 use Modules\Products\Filament\Exports\ProductExporter;
 use Modules\Products\Filament\Imports\ProductImporter;
@@ -43,6 +45,8 @@ use Modules\Products\Filament\Resources\Products\Pages\ManageRelatedProducts;
 use Modules\Products\Filament\Resources\Products\Pages\ManageUpSellProducts;
 use Modules\Products\Filament\Resources\Products\RelationManagers\ChannelsRelationManager;
 use Modules\Products\Models\Product;
+
+use function Filament\Support\original_request;
 
 class ProductResource extends Resource
 {
@@ -107,9 +111,16 @@ class ProductResource extends Resource
 
                 Select::make('attribute_set_id')
                     ->relationship(name: 'attributeSet', titleAttribute: 'name')
-                    ->label('Attribute set')
+                    ->label('Primary attribute set')
                     ->preload()
                     ->searchable(),
+
+                Select::make('attributeSets')
+                    ->relationship(name: 'attributeSets', titleAttribute: 'name')
+                    ->label('Attribute sets')
+                    ->multiple()
+                    ->searchable()
+                    ->preload(),
             ]);
     }
 
@@ -196,7 +207,7 @@ class ProductResource extends Resource
             'create' => CreateProduct::route('/create'),
             'edit' => EditProduct::route('/{record}/edit'),
             'images' => ManageProductImages::route('/{record}/images'),
-            'attributes' => ManageProductAttributes::route('/{record}/attributes'),
+            'attributes' => ManageProductAttributes::route('/{record}/attributes/{attributeSet}'),
             'related-products' => ManageRelatedProducts::route('/{record}/related-products'),
             'cross-sells' => ManageCrossSellProducts::route('/{record}/cross-sells'),
             'up-sells' => ManageUpSellProducts::route('/{record}/up-sells'),
@@ -211,20 +222,28 @@ class ProductResource extends Resource
 
     public static function getRecordSubNavigation(Page $page): array
     {
-        $items = [
-            EditProduct::class,
-            ManageProductImages::class,
+        $record = $page->getRecord();
+
+        $attributeSetItems = $record->attributeSets
+            ->sortBy('name')
+            ->map(fn (AttributeSet $attributeSet): NavigationItem => NavigationItem::make($attributeSet->name)
+                ->url(ManageProductAttributes::getUrl(['record' => $record, 'attributeSet' => $attributeSet]))
+                ->isActiveWhen(fn (): bool => (string) original_request()->route('attributeSet') === (string) $attributeSet->getKey()))
+            ->values()
+            ->all();
+
+        return [
+            ...$page->generateNavigationItems([
+                EditProduct::class,
+                ManageProductImages::class,
+            ]),
+            ...$attributeSetItems,
+            ...$page->generateNavigationItems([
+                ManageRelatedProducts::class,
+                ManageCrossSellProducts::class,
+                ManageUpSellProducts::class,
+                ManageProductActivities::class,
+            ]),
         ];
-
-        if (filled($page->getRecord()->attribute_set_id)) {
-            $items[] = ManageProductAttributes::class;
-        }
-
-        $items[] = ManageRelatedProducts::class;
-        $items[] = ManageCrossSellProducts::class;
-        $items[] = ManageUpSellProducts::class;
-        $items[] = ManageProductActivities::class;
-
-        return $page->generateNavigationItems($items);
     }
 }

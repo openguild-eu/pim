@@ -10,17 +10,15 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Navigation\NavigationItem;
 use Filament\Resources\Pages\EditRecord;
-use Filament\Schemas\Components\Text;
 use Filament\Schemas\Schema;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Livewire\Attributes\Locked;
 use Modules\Attributes\Models\Attribute;
+use Modules\Attributes\Models\AttributeSet;
 use Modules\Products\Filament\Resources\Products\Pages\Concerns\PersistsAttributeValues;
 use Modules\Products\Filament\Resources\Products\ProductResource;
-
-use function Filament\Support\original_request;
 
 class ManageProductAttributes extends EditRecord
 {
@@ -28,26 +26,40 @@ class ManageProductAttributes extends EditRecord
 
     protected static string $resource = ProductResource::class;
 
+    #[Locked]
+    public int|string $attributeSetKey;
+
+    public function mount(int|string $record, int|string|null $attributeSet = null): void
+    {
+        $this->record = $this->resolveRecord($record);
+
+        $this->authorizeAccess();
+
+        // Scoped lookup: throws ModelNotFoundException (→ 404) unless this
+        // AttributeSet is actually attached to this product. This is the
+        // only guard needed — there is no separate tenant check, same
+        // reasoning already documented for every other sub-navigation page
+        // on this resource (blueprints/product-images-tab.md).
+        $this->attributeSetKey = $this->record->attributeSets()->findOrFail($attributeSet)->getKey();
+
+        $this->fillForm();
+
+        $this->previousUrl = url()->previous();
+    }
+
+    protected function getAttributeSet(): AttributeSet
+    {
+        return $this->record->attributeSets()
+            ->with(['attributes' => fn (BelongsToMany $query) => $query->orderByPivot('position')])
+            ->findOrFail($this->attributeSetKey);
+    }
+
     public function form(Schema $schema): Schema
     {
-        $this->record->loadMissing([
-            'attributeSet.attributes' => fn (BelongsToMany $query) => $query->orderByPivot('position'),
-        ]);
-
-        $attributeSet = $this->record->attributeSet;
-
-        if (! $attributeSet) {
-            return $schema
-                ->columns(1)
-                ->components([
-                    Text::make('No attribute set is assigned to this product yet. Assign one from the Edit page.'),
-                ]);
-        }
-
         return $schema
             ->columns(1)
             ->components(
-                $attributeSet->attributes
+                $this->getAttributeSet()->attributes
                     ->map(function (Attribute $attribute): Field {
                         $name = "attribute_values.{$attribute->code}";
                         $isRequired = (bool) $attribute->pivot->is_required;
@@ -73,38 +85,14 @@ class ManageProductAttributes extends EditRecord
             );
     }
 
-    public static function getNavigationLabel(): string|Htmlable
-    {
-        return 'Attributes';
-    }
-
     public function getTitle(): string|Htmlable
     {
-        return $this->record->attributeSet?->name ?? 'Attributes';
+        return $this->getAttributeSet()->name;
     }
 
     public function getBreadcrumb(): string
     {
-        return $this->record->attributeSet?->name ?? 'Attributes';
-    }
-
-    public static function getNavigationItems(array $urlParameters = []): array
-    {
-        $record = $urlParameters['record'] ?? null;
-        $label = $record?->attributeSet?->name ?? static::getNavigationLabel();
-
-        return [
-            NavigationItem::make($label)
-                ->key(static::class)
-                ->group(static::getNavigationGroup())
-                ->parentItem(static::getNavigationParentItem())
-                ->icon(static::getNavigationIcon())
-                ->activeIcon(static::getActiveNavigationIcon())
-                ->activeWhen(fn (): bool => original_request()->routeIs(static::getNavigationItemActiveRoutePattern()))
-                ->sort(static::getNavigationSort())
-                ->badge(static::getNavigationBadge(), color: static::getNavigationBadgeColor())
-                ->url(static::getNavigationUrl($urlParameters)),
-        ];
+        return $this->getAttributeSet()->name;
     }
 
     protected function mutateFormDataBeforeFill(array $data): array
@@ -126,6 +114,6 @@ class ManageProductAttributes extends EditRecord
 
     protected function afterSave(): void
     {
-        $this->persistAttributeValues($this->record);
+        $this->persistAttributeValues($this->record, $this->getAttributeSet());
     }
 }
