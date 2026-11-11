@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Pages\NeedsAttention;
 use Filament\Support\Icons\Heroicon;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
@@ -41,6 +42,8 @@ class ProductCompletenessOverview extends StatsOverviewWidget
             ->doesntHave('categories')
             ->count();
 
+        $needsAttentionUrl = NeedsAttention::getUrl();
+
         return [
             Stat::make('Average Completeness', "{$averageCompleteness}%")
                 ->icon(Heroicon::OutlinedCheckCircle)
@@ -53,15 +56,27 @@ class ProductCompletenessOverview extends StatsOverviewWidget
             Stat::make('Missing Required Attributes', (string) $missingRequiredAttributes)
                 ->description("out of {$totalProducts} products")
                 ->icon(Heroicon::OutlinedExclamationTriangle)
-                ->color($missingRequiredAttributes > 0 ? 'warning' : 'success'),
+                ->color($missingRequiredAttributes > 0 ? 'warning' : 'success')
+                ->extraAttributes([
+                    'class' => 'cursor-pointer',
+                    'onclick' => "window.location='{$needsAttentionUrl}'",
+                ]),
 
             Stat::make('Missing Images', (string) $missingImages)
                 ->icon(Heroicon::OutlinedPhoto)
-                ->color($missingImages > 0 ? 'warning' : 'success'),
+                ->color($missingImages > 0 ? 'warning' : 'success')
+                ->extraAttributes([
+                    'class' => 'cursor-pointer',
+                    'onclick' => "window.location='{$needsAttentionUrl}'",
+                ]),
 
             Stat::make('Missing Categories', (string) $missingCategories)
                 ->icon(Heroicon::OutlinedTag)
-                ->color($missingCategories > 0 ? 'warning' : 'success'),
+                ->color($missingCategories > 0 ? 'warning' : 'success')
+                ->extraAttributes([
+                    'class' => 'cursor-pointer',
+                    'onclick' => "window.location='{$needsAttentionUrl}'",
+                ]),
         ];
     }
 }

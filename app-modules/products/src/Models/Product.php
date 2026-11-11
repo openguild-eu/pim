@@ -19,6 +19,7 @@ use Modules\Attributes\Models\AttributeValue;
 use Modules\Categories\Models\Category;
 use Modules\Channels\Models\Channel;
 use Modules\Products\Database\Factories\ProductFactory;
+use Modules\Products\Enums\ProductIssue;
 use Modules\Products\Enums\ProductStatus;
 use Modules\Relations\Models\ProductRelation;
 use Modules\Relations\Models\ProductRelationType;
@@ -149,6 +150,41 @@ class Product extends Model implements HasMedia
         $missingCount = $this->missingRequiredAttributes()->count();
 
         return (int) round((($required->count() - $missingCount) / $required->count()) * 100);
+    }
+
+    /**
+     * Data-quality issues affecting this product, for the "Needs Attention"
+     * page. Reads from already-loaded relations — callers must eager-load
+     * `media`, `categories`, `attributeSet.attributes`,
+     * `attributeValues.attribute`, and `channels` to avoid N+1 (see
+     * App\Filament\Pages\NeedsAttention).
+     *
+     * @return Collection<int, ProductIssue>
+     */
+    public function issues(): Collection
+    {
+        $issues = collect();
+
+        if ($this->getMedia('images')->isEmpty()) {
+            $issues->push(ProductIssue::MissingImages);
+        }
+
+        if ($this->categories->isEmpty()) {
+            $issues->push(ProductIssue::MissingCategories);
+        }
+
+        if ($this->missingRequiredAttributes()->isNotEmpty()) {
+            $issues->push(ProductIssue::MissingRequiredAttributes);
+        }
+
+        $isPublishedOnAnyChannel = $this->channels
+            ->contains(fn (Channel $channel): bool => (bool) $channel->pivot->is_published);
+
+        if ($isPublishedOnAnyChannel && $issues->isNotEmpty()) {
+            $issues->push(ProductIssue::PublishedButIncomplete);
+        }
+
+        return $issues->values();
     }
 
     public function channels(): BelongsToMany
