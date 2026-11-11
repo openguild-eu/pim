@@ -9,6 +9,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\SpatieMediaLibraryFileUpload;
+use Filament\Schemas\Components\Section;
 use Filament\Tables\Columns\SpatieMediaLibraryImageColumn;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\UploadedFile;
@@ -175,6 +176,18 @@ it('configures the attribute_set_id select as live so the attributes section rea
             'attribute_set_id',
             checkComponentUsing: fn (Select $component): bool => $component->isLive(),
         );
+});
+
+it('keeps the Attributes sidebar fixed-width while the product details column grows', function () {
+    actingAsCatalogUser();
+
+    $test = Livewire::test(CreateProduct::class);
+
+    $section = collect($test->instance()->getSchema('form')->getFlatComponents(withHidden: true))
+        ->first(fn ($component): bool => $component instanceof Section && $component->getHeading() === 'Attributes');
+
+    expect($section)->not->toBeNull()
+        ->and($section->canGrow())->toBeFalse();
 });
 
 it('persists category assignment on create', function () {

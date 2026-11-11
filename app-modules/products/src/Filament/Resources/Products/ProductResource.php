@@ -21,6 +21,8 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Pages\Page;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Flex;
+use Filament\Schemas\Components\Group;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
@@ -68,99 +70,105 @@ class ProductResource extends Resource
         return $schema
             ->columns(1)
             ->components([
-                TextInput::make('name')
-                    ->required()
-                    ->maxLength(255)
-                    ->live(onBlur: true)
-                    ->afterStateUpdated(function (Set $set, ?string $state, string $operation): void {
-                        if ($operation === 'create') {
-                            $set('slug', Str::slug((string) $state));
-                        }
-                    }),
+                Flex::make([
+                    Section::make('Attributes')
+                        ->grow(false)
+                        ->schema([
+                            Select::make('attribute_set_id')
+                                ->relationship(name: 'attributeSet', titleAttribute: 'name')
+                                ->label('Attribute set')
+                                ->live()
+                                ->preload()
+                                ->searchable(),
 
-                TextInput::make('sku')
-                    ->required()
-                    ->maxLength(255)
-                    ->scopedUnique(ignoreRecord: true)
-                    ->helperText('Unique stock-keeping unit code for this catalog.'),
+                            Group::make(function (Get $get): array {
+                                $attributeSetId = $get('attribute_set_id');
 
-                TextInput::make('slug')
-                    ->required()
-                    ->maxLength(255)
-                    ->alphaDash()
-                    ->scopedUnique(ignoreRecord: true)
-                    ->helperText('Used in URLs. Lowercase letters, numbers, and dashes only.'),
+                                if (blank($attributeSetId)) {
+                                    return [];
+                                }
 
-                Select::make('status')
-                    ->required()
-                    ->options(ProductStatus::class)
-                    ->default(ProductStatus::Draft),
+                                $attributeSet = AttributeSet::query()
+                                    ->with(['attributes' => fn (BelongsToMany $query) => $query->orderByPivot('position')])
+                                    ->find($attributeSetId);
 
-                TextInput::make('price')
-                    ->numeric()
-                    ->minValue(0)
-                    ->prefix('cents')
-                    ->helperText('Stored as integer cents, e.g. 1999 = $19.99.'),
+                                if (! $attributeSet) {
+                                    return [];
+                                }
 
-                Textarea::make('description')
-                    ->rows(4)
-                    ->columnSpanFull(),
+                                return $attributeSet->attributes
+                                    ->map(function (Attribute $attribute): Field {
+                                        $name = "attribute_values.{$attribute->code}";
+                                        $isRequired = (bool) $attribute->pivot->is_required;
 
-                Select::make('categories')
-                    ->relationship(name: 'categories', titleAttribute: 'name')
-                    ->multiple()
-                    ->searchable()
-                    ->preload(),
+                                        $field = match ($attribute->type->value) {
+                                            'text' => TextInput::make($name),
+                                            'textarea' => Textarea::make($name),
+                                            'number' => TextInput::make($name)->numeric(),
+                                            'boolean' => Toggle::make($name),
+                                            'date' => DatePicker::make($name),
+                                            'select' => Select::make($name)
+                                                ->options(collect($attribute->options)->pluck('label', 'value')),
+                                            'multiselect' => Select::make($name)
+                                                ->multiple()
+                                                ->options(collect($attribute->options)->pluck('label', 'value')),
+                                        };
 
-                Select::make('attribute_set_id')
-                    ->relationship(name: 'attributeSet', titleAttribute: 'name')
-                    ->label('Attribute set')
-                    ->live()
-                    ->preload()
-                    ->searchable(),
-
-                Section::make('Attributes')
-                    ->columnSpanFull()
-                    ->visible(fn (Get $get): bool => filled($get('attribute_set_id')))
-                    ->schema(function (Get $get): array {
-                        $attributeSetId = $get('attribute_set_id');
-
-                        if (blank($attributeSetId)) {
-                            return [];
-                        }
-
-                        $attributeSet = AttributeSet::query()
-                            ->with(['attributes' => fn (BelongsToMany $query) => $query->orderByPivot('position')])
-                            ->find($attributeSetId);
-
-                        if (! $attributeSet) {
-                            return [];
-                        }
-
-                        return $attributeSet->attributes
-                            ->map(function (Attribute $attribute): Field {
-                                $name = "attribute_values.{$attribute->code}";
-                                $isRequired = (bool) $attribute->pivot->is_required;
-
-                                $field = match ($attribute->type->value) {
-                                    'text' => TextInput::make($name),
-                                    'textarea' => Textarea::make($name),
-                                    'number' => TextInput::make($name)->numeric(),
-                                    'boolean' => Toggle::make($name),
-                                    'date' => DatePicker::make($name),
-                                    'select' => Select::make($name)
-                                        ->options(collect($attribute->options)->pluck('label', 'value')),
-                                    'multiselect' => Select::make($name)
-                                        ->multiple()
-                                        ->options(collect($attribute->options)->pluck('label', 'value')),
-                                };
-
-                                return $field
-                                    ->label($attribute->label)
-                                    ->required($isRequired);
+                                        return $field
+                                            ->label($attribute->label)
+                                            ->required($isRequired);
+                                    })
+                                    ->all();
                             })
-                            ->all();
-                    }),
+                                ->visible(fn (Get $get): bool => filled($get('attribute_set_id'))),
+                        ]),
+
+                    Group::make([
+                        TextInput::make('name')
+                            ->required()
+                            ->maxLength(255)
+                            ->live(onBlur: true)
+                            ->afterStateUpdated(function (Set $set, ?string $state, string $operation): void {
+                                if ($operation === 'create') {
+                                    $set('slug', Str::slug((string) $state));
+                                }
+                            }),
+
+                        TextInput::make('sku')
+                            ->required()
+                            ->maxLength(255)
+                            ->scopedUnique(ignoreRecord: true)
+                            ->helperText('Unique stock-keeping unit code for this catalog.'),
+
+                        TextInput::make('slug')
+                            ->required()
+                            ->maxLength(255)
+                            ->alphaDash()
+                            ->scopedUnique(ignoreRecord: true)
+                            ->helperText('Used in URLs. Lowercase letters, numbers, and dashes only.'),
+
+                        Select::make('status')
+                            ->required()
+                            ->options(ProductStatus::class)
+                            ->default(ProductStatus::Draft),
+
+                        TextInput::make('price')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('cents')
+                            ->helperText('Stored as integer cents, e.g. 1999 = $19.99.'),
+
+                        Textarea::make('description')
+                            ->rows(4)
+                            ->columnSpanFull(),
+
+                        Select::make('categories')
+                            ->relationship(name: 'categories', titleAttribute: 'name')
+                            ->multiple()
+                            ->searchable()
+                            ->preload(),
+                    ]),
+                ])->from('md'),
             ]);
     }
 
