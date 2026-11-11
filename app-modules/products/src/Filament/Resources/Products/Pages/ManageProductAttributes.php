@@ -11,6 +11,8 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Pages\EditRecord;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -56,33 +58,48 @@ class ManageProductAttributes extends EditRecord
 
     public function form(Schema $schema): Schema
     {
+        $attributeSet = $this->getAttributeSet();
+
         return $schema
             ->columns(1)
-            ->components(
-                $this->getAttributeSet()->attributes
-                    ->map(function (Attribute $attribute): Field {
-                        $name = "attribute_values.{$attribute->code}";
-                        $isRequired = (bool) $attribute->pivot->is_required;
+            ->components([
+                Section::make($attributeSet->name)
+                    ->description(function (Get $get) use ($attributeSet): string {
+                        $missingLabels = $attributeSet->attributes
+                            ->filter(fn (Attribute $attribute): bool => (bool) $attribute->pivot->is_required)
+                            ->reject(fn (Attribute $attribute): bool => filled($get("attribute_values.{$attribute->code}")))
+                            ->pluck('label');
 
-                        $field = match ($attribute->type->value) {
-                            'text' => TextInput::make($name),
-                            'textarea' => Textarea::make($name),
-                            'number' => TextInput::make($name)->numeric(),
-                            'boolean' => Toggle::make($name),
-                            'date' => DatePicker::make($name),
-                            'select' => Select::make($name)
-                                ->options(collect($attribute->options)->pluck('label', 'value')),
-                            'multiselect' => Select::make($name)
-                                ->multiple()
-                                ->options(collect($attribute->options)->pluck('label', 'value')),
-                        };
-
-                        return $field
-                            ->label($attribute->label)
-                            ->required($isRequired);
+                        return $missingLabels->isEmpty()
+                            ? 'All required attributes are filled.'
+                            : 'Missing required attributes: '.$missingLabels->join(', ').'.';
                     })
-                    ->all()
-            );
+                    ->schema(
+                        $attributeSet->attributes
+                            ->map(function (Attribute $attribute): Field {
+                                $name = "attribute_values.{$attribute->code}";
+                                $isRequired = (bool) $attribute->pivot->is_required;
+
+                                $field = match ($attribute->type->value) {
+                                    'text' => TextInput::make($name),
+                                    'textarea' => Textarea::make($name),
+                                    'number' => TextInput::make($name)->numeric(),
+                                    'boolean' => Toggle::make($name),
+                                    'date' => DatePicker::make($name),
+                                    'select' => Select::make($name)
+                                        ->options(collect($attribute->options)->pluck('label', 'value')),
+                                    'multiselect' => Select::make($name)
+                                        ->multiple()
+                                        ->options(collect($attribute->options)->pluck('label', 'value')),
+                                };
+
+                                return $field
+                                    ->label($attribute->label)
+                                    ->required($isRequired);
+                            })
+                            ->all()
+                    ),
+            ]);
     }
 
     public function getTitle(): string|Htmlable
