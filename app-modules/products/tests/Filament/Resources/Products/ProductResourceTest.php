@@ -573,9 +573,9 @@ it('hides the Attributes sub-navigation entry when no attribute set is assigned'
     expect($subNavigationLabels)->not->toContain('Attributes');
 });
 
-it('shows the Attributes sub-navigation entry once an attribute set is assigned', function () {
+it('labels the Attributes sub-navigation entry with the assigned attribute set\'s own name', function () {
     $catalog = actingAsCatalogUser();
-    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Clothing']);
     $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
 
     $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
@@ -585,7 +585,29 @@ it('shows the Attributes sub-navigation entry once an attribute set is assigned'
         ProductResource::getRecordSubNavigation($test->instance())
     )->map(fn ($item) => $item->getLabel())->all();
 
-    expect($subNavigationLabels)->toContain('Attributes');
+    expect($subNavigationLabels)->toContain('Clothing')
+        ->and($subNavigationLabels)->not->toContain('Attributes');
+});
+
+it('titles the Attributes page with the assigned attribute set\'s own name', function () {
+    $catalog = actingAsCatalogUser();
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Clothing']);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+
+    $test = Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()]);
+
+    expect($test->instance()->getTitle())->toBe('Clothing')
+        ->and($test->instance()->getBreadcrumb())->toBe('Clothing');
+});
+
+it('falls back to a generic title and breadcrumb on the Attributes page when no attribute set is assigned', function () {
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => null]);
+
+    $test = Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()]);
+
+    expect($test->instance()->getTitle())->toBe('Attributes')
+        ->and($test->instance()->getBreadcrumb())->toBe('Attributes');
 });
 
 it('does not write attribute values to a product in a different catalog when the attributes page form is submitted directly', function () {
