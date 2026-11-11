@@ -127,6 +127,7 @@ class ProductResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with(['attributeSet.attributes', 'attributeValues.attribute']))
             ->columns([
                 SpatieMediaLibraryImageColumn::make('images')
                     ->collection('images')
@@ -147,6 +148,24 @@ class ProductResource extends Resource
                 TextColumn::make('attributeSet.name')
                     ->label('Attribute Set')
                     ->toggleable(isToggledHiddenByDefault: true),
+
+                TextColumn::make('completeness')
+                    ->label('Completeness')
+                    ->state(fn (Product $record): int => $record->completenessPercentage())
+                    ->formatStateUsing(fn (int $state): string => "{$state}%")
+                    ->badge()
+                    ->color(fn (int $state): string => match (true) {
+                        $state === 100 => 'success',
+                        $state >= 50 => 'warning',
+                        default => 'danger',
+                    })
+                    ->tooltip(function (Product $record): ?string {
+                        $missing = $record->missingRequiredAttributes();
+
+                        return $missing->isEmpty()
+                            ? null
+                            : 'Missing: '.$missing->pluck('label')->join(', ');
+                    }),
 
                 TextColumn::make('price')
                     ->money('USD', divideBy: 100)

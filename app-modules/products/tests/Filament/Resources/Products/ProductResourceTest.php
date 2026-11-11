@@ -14,6 +14,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Enum;
 use Livewire\Livewire;
+use Modules\Attributes\Enums\AttributeType;
 use Modules\Attributes\Models\Attribute;
 use Modules\Attributes\Models\AttributeSet;
 use Modules\Attributes\Models\AttributeValue;
@@ -632,4 +633,117 @@ it('replaces attribute set assignment on edit rather than merging it', function 
         ->assertHasNoFormErrors();
 
     expect($product->attributeSets()->pluck('attribute_sets.id')->all())->toBe([$setB->id]);
+});
+
+it('a product with no attribute set is fully complete', function () {
+    $catalog = actingAsCatalogUser();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => null]);
+
+    expect($product->completenessPercentage())->toBe(100);
+    expect($product->missingRequiredAttributes())->toBeEmpty();
+});
+
+it('a product whose attribute set has no required attributes is fully complete', function () {
+    $catalog = actingAsCatalogUser();
+    $attribute = Attribute::factory()->create(['catalog_id' => $catalog->id]);
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $attributeSet->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => false]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+
+    expect($product->completenessPercentage())->toBe(100);
+    expect($product->missingRequiredAttributes())->toBeEmpty();
+});
+
+it('completeness reflects the proportion of required attributes with a filled value', function () {
+    $catalog = actingAsCatalogUser();
+    $color = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'color', 'type' => AttributeType::Text]);
+    $material = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'material', 'type' => AttributeType::Text]);
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $attributeSet->attributes()->attach($color->id, ['position' => 0, 'is_required' => true]);
+    $attributeSet->attributes()->attach($material->id, ['position' => 1, 'is_required' => true]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+
+    AttributeValue::create([
+        'catalog_id' => $catalog->id,
+        'product_id' => $product->id,
+        'attribute_id' => $color->id,
+        'value_text' => 'red',
+    ]);
+
+    expect($product->completenessPercentage())->toBe(50);
+    expect($product->missingRequiredAttributes()->pluck('code')->all())->toBe(['material']);
+});
+
+it('a required boolean attribute explicitly set to false counts as filled', function () {
+    $catalog = actingAsCatalogUser();
+    $attribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'is_fragile', 'type' => AttributeType::Boolean]);
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $attributeSet->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => true]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+
+    AttributeValue::create([
+        'catalog_id' => $catalog->id,
+        'product_id' => $product->id,
+        'attribute_id' => $attribute->id,
+        'value_boolean' => false,
+    ]);
+
+    expect($product->completenessPercentage())->toBe(100);
+    expect($product->missingRequiredAttributes())->toBeEmpty();
+});
+
+it('a required multiselect attribute saved with an empty selection does not count as filled', function () {
+    $catalog = actingAsCatalogUser();
+    $attribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'tags', 'type' => AttributeType::Multiselect]);
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $attributeSet->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => true]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+
+    AttributeValue::create([
+        'catalog_id' => $catalog->id,
+        'product_id' => $product->id,
+        'attribute_id' => $attribute->id,
+        'value_text' => '[]',
+    ]);
+
+    expect($product->completenessPercentage())->toBe(0);
+    expect($product->missingRequiredAttributes()->pluck('code')->all())->toBe(['tags']);
+});
+
+it('shows the completeness badge and tooltip in the products table', function () {
+    $catalog = actingAsCatalogUser();
+    $attribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'material', 'label' => 'Material', 'type' => AttributeType::Text]);
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $attributeSet->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => true]);
+    $complete = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => null]);
+    $incomplete = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+
+    Livewire::test(ListProducts::class)
+        ->assertSee('100%')
+        ->assertSee('0%')
+        ->assertSee('Missing: Material', escape: false);
+});
+
+// Deviation from blueprints/product-completeness.md: the blueprint's test
+// drove this through CreateProduct's `attribute_set_id` select and an
+// `attribute_values` field on the main product form, because at the time
+// the blueprint was written, ProductResource::form() still had an inline
+// Section::make('Attributes') computing fields from the live-selected
+// attribute set. Commits 9291c65/eab5d05/639051a (after the blueprint was
+// authored) moved that editing UI out to the dedicated, per-attribute-set
+// ManageProductAttributes page — ProductResource::form() no longer has an
+// `attribute_values` field at all. The equivalent description now lives on
+// that page's Section instead, so this test targets it there.
+it('shows which required attributes are missing on the product attributes page', function () {
+    $catalog = actingAsCatalogUser();
+    $attribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'material', 'label' => 'Material', 'type' => AttributeType::Text]);
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $attributeSet->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => true]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $product->attributeSets()->attach($attributeSet->id);
+
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey(), 'attributeSet' => $attributeSet->getRouteKey()])
+        ->assertSee('Missing required attributes: Material.')
+        ->fillForm(['attribute_values' => ['material' => 'Cotton']])
+        ->assertSee('All required attributes are filled.');
 });

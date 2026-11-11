@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
+use Modules\Attributes\Models\Attribute;
 use Modules\Attributes\Models\AttributeSet;
 use Modules\Attributes\Models\AttributeValue;
 use Modules\Categories\Models\Category;
@@ -81,6 +83,72 @@ class Product extends Model implements HasMedia
     public function attributeValues(): HasMany
     {
         return $this->hasMany(AttributeValue::class);
+    }
+
+    /**
+     * The attribute set's required attributes. Reads from already-loaded
+     * relations (`attributeSet.attributes`) rather than issuing a fresh
+     * query, so callers must eager-load that relation to avoid N+1 — see
+     * ProductResource::table()'s `modifyQueryUsing()`.
+     *
+     * @return Collection<int, Attribute>
+     */
+    private function requiredAttributes(): Collection
+    {
+        if (! $this->attributeSet) {
+            return collect();
+        }
+
+        // Accessed via getRelationValue() rather than the `attributes`
+        // property: Product and AttributeSet are both Eloquent models, so
+        // from inside this (also-a-Model) class, `$this->attributeSet
+        // ->attributes` resolves to AttributeSet's own protected raw
+        // attribute array (a PHP protected-property-visibility quirk
+        // shared across sibling Model subclasses) instead of the
+        // `attributes()` relation — returning an array, not a Collection.
+        return $this->attributeSet->getRelationValue('attributes')
+            ->filter(fn (Attribute $attribute): bool => (bool) $attribute->pivot->is_required);
+    }
+
+    /**
+     * Required attributes with no filled value yet, in the attribute set's
+     * own position order. Reads from the already-loaded `attributeValues`
+     * relation (with `attribute` eager-loaded on each) — see
+     * ProductResource::table()'s `modifyQueryUsing()`.
+     *
+     * @return Collection<int, Attribute>
+     */
+    public function missingRequiredAttributes(): Collection
+    {
+        $required = $this->requiredAttributes();
+
+        if ($required->isEmpty()) {
+            return $required;
+        }
+
+        $valuesByAttributeId = $this->attributeValues->keyBy('attribute_id');
+
+        return $required
+            ->reject(fn (Attribute $attribute): bool => $valuesByAttributeId->get($attribute->id)?->isFilled() ?? false)
+            ->values();
+    }
+
+    /**
+     * Percentage of the attribute set's required attributes that have a
+     * filled value. 100 when there is no attribute set, or the attribute
+     * set has no required attributes — there is nothing to require.
+     */
+    public function completenessPercentage(): int
+    {
+        $required = $this->requiredAttributes();
+
+        if ($required->isEmpty()) {
+            return 100;
+        }
+
+        $missingCount = $this->missingRequiredAttributes()->count();
+
+        return (int) round((($required->count() - $missingCount) / $required->count()) * 100);
     }
 
     public function channels(): BelongsToMany
