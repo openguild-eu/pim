@@ -35,8 +35,14 @@ class AdminPanelProvider extends PanelProvider
             ->path('/')
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->brandName('OpenGuild PIM')
-            ->brandLogo(asset('images/brand/openguild-logo-color.svg'))
-            ->darkModeBrandLogo(asset('images/brand/openguild-logo-white.svg'))
+            ->brandLogo(fn () => view('filament.admin.brand-logo', [
+                'logo' => asset('images/brand/openguild-logo-color.svg'),
+                'textColor' => 'rgba(15, 27, 61, 0.6)',
+            ]))
+            ->darkModeBrandLogo(fn () => view('filament.admin.brand-logo', [
+                'logo' => asset('images/brand/openguild-logo-white.svg'),
+                'textColor' => 'rgba(255, 255, 255, 0.7)',
+            ]))
             ->brandLogoHeight('2rem')
             ->favicon(asset('images/brand/openguild-app-icon-32.png'))
             ->profile()
