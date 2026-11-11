@@ -10,25 +10,23 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Navigation\NavigationItem;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Schemas\Components\Text;
 use Filament\Schemas\Schema;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Modules\Attributes\Models\Attribute;
 use Modules\Products\Filament\Resources\Products\Pages\Concerns\PersistsAttributeValues;
 use Modules\Products\Filament\Resources\Products\ProductResource;
+
+use function Filament\Support\original_request;
 
 class ManageProductAttributes extends EditRecord
 {
     use PersistsAttributeValues;
 
     protected static string $resource = ProductResource::class;
-
-    protected static ?string $navigationLabel = 'Attributes';
-
-    protected static ?string $breadcrumb = 'Attributes';
-
-    protected static ?string $title = 'Attributes';
 
     public function form(Schema $schema): Schema
     {
@@ -73,6 +71,40 @@ class ManageProductAttributes extends EditRecord
                     })
                     ->all()
             );
+    }
+
+    public static function getNavigationLabel(): string|Htmlable
+    {
+        return 'Attributes';
+    }
+
+    public function getTitle(): string|Htmlable
+    {
+        return $this->record->attributeSet?->name ?? 'Attributes';
+    }
+
+    public function getBreadcrumb(): string
+    {
+        return $this->record->attributeSet?->name ?? 'Attributes';
+    }
+
+    public static function getNavigationItems(array $urlParameters = []): array
+    {
+        $record = $urlParameters['record'] ?? null;
+        $label = $record?->attributeSet?->name ?? static::getNavigationLabel();
+
+        return [
+            NavigationItem::make($label)
+                ->key(static::class)
+                ->group(static::getNavigationGroup())
+                ->parentItem(static::getNavigationParentItem())
+                ->icon(static::getNavigationIcon())
+                ->activeIcon(static::getActiveNavigationIcon())
+                ->activeWhen(fn (): bool => original_request()->routeIs(static::getNavigationItemActiveRoutePattern()))
+                ->sort(static::getNavigationSort())
+                ->badge(static::getNavigationBadge(), color: static::getNavigationBadgeColor())
+                ->url(static::getNavigationUrl($urlParameters)),
+        ];
     }
 
     protected function mutateFormDataBeforeFill(array $data): array
