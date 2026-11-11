@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Modules\Products\Filament\Resources\Products\Pages\Concerns;
 
 use Modules\Attributes\Models\Attribute;
+use Modules\Attributes\Models\AttributeSet;
 use Modules\Attributes\Models\AttributeValue;
 use Modules\Products\Models\Product;
 
@@ -40,19 +41,15 @@ trait PersistsAttributeValues
      * Upserts one `AttributeValue` row per submitted code. Never deletes
      * `AttributeValue` rows belonging to a different AttributeSet.
      */
-    protected function persistAttributeValues(Product $record): void
+    protected function persistAttributeValues(Product $record, AttributeSet $attributeSet): void
     {
-        if (! $record->attribute_set_id) {
-            return;
-        }
-
         foreach ($this->attributeValuesData as $code => $value) {
             if ($value === null) {
                 continue;
             }
 
             /** @var Attribute|null $attribute */
-            $attribute = $record->attributeSet->attributes()
+            $attribute = $attributeSet->attributes()
                 ->where('code', $code)
                 ->first();
 

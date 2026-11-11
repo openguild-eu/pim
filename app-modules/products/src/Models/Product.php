@@ -68,6 +68,11 @@ class Product extends Model implements HasMedia
         return $this->belongsTo(AttributeSet::class);
     }
 
+    public function attributeSets(): BelongsToMany
+    {
+        return $this->belongsToMany(AttributeSet::class, 'attribute_set_product');
+    }
+
     public function categories(): BelongsToMany
     {
         return $this->belongsToMany(Category::class, 'category_product');

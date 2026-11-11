@@ -302,74 +302,50 @@ it('required attribute fields on the Attributes page reflect that attribute set\
     $setRequiring->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => true]);
     $setNotRequiring->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => false]);
 
-    $productRequiring = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $setRequiring->id]);
-    $productNotRequiring = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $setNotRequiring->id]);
+    $productRequiring = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $productRequiring->attributeSets()->attach($setRequiring->id);
 
-    Livewire::test(ManageProductAttributes::class, ['record' => $productRequiring->getRouteKey()])
+    $productNotRequiring = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $productNotRequiring->attributeSets()->attach($setNotRequiring->id);
+
+    Livewire::test(ManageProductAttributes::class, ['record' => $productRequiring->getRouteKey(), 'attributeSet' => $setRequiring->getRouteKey()])
         ->assertFormFieldExists('attribute_values.material', fn (Field $field): bool => $field->isRequired());
 
-    Livewire::test(ManageProductAttributes::class, ['record' => $productNotRequiring->getRouteKey()])
+    Livewire::test(ManageProductAttributes::class, ['record' => $productNotRequiring->getRouteKey(), 'attributeSet' => $setNotRequiring->getRouteKey()])
         ->assertFormFieldExists('attribute_values.material', fn (Field $field): bool => ! $field->isRequired());
 });
 
-it('switching attribute sets away and back preserves the original set\'s saved values and keeps both sets\' data', function () {
+it('persists independent attribute values for each attribute set attached to the same product', function () {
     $catalog = actingAsCatalogUser();
     $colorAttribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'color']);
     $materialAttribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'material']);
-    $setA = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
-    $setB = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $setA = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Color Set']);
+    $setB = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Material Set']);
     $setA->attributes()->attach($colorAttribute->id, ['position' => 0, 'is_required' => false]);
     $setB->attributes()->attach($materialAttribute->id, ['position' => 0, 'is_required' => false]);
 
-    // Create under set A. attribute_set_id lives on the main Create form;
-    // attribute_values no longer does.
-    Livewire::test(CreateProduct::class)
-        ->fillForm([
-            'sku' => 'SKU-1',
-            'name' => 'Boots',
-            'slug' => 'boots',
-            'status' => 'draft',
-            'attribute_set_id' => $setA->id,
-        ])
-        ->call('create')
-        ->assertHasNoFormErrors();
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $product->attributeSets()->attach([$setA->id, $setB->id]);
 
-    $product = Product::query()->where('sku', 'SKU-1')->first();
-
-    // Fill set A's attribute on the dedicated Attributes page.
-    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey(), 'attributeSet' => $setA->getRouteKey()])
         ->fillForm(['attribute_values' => ['color' => 'red']])
         ->call('save')
         ->assertHasNoFormErrors();
 
-    // Switch to set B on the main Edit page (no attribute_values field there).
-    Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
-        ->fillForm(['attribute_set_id' => $setB->id])
-        ->call('save')
-        ->assertHasNoFormErrors();
-
-    // Fill set B's attribute on the (now set-B-scoped) Attributes page.
-    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey(), 'attributeSet' => $setB->getRouteKey()])
         ->fillForm(['attribute_values' => ['material' => 'cotton']])
         ->call('save')
         ->assertHasNoFormErrors();
 
-    // Both sets' AttributeValue rows must now exist, independently.
     $colorValue = AttributeValue::query()->where('product_id', $product->id)->where('attribute_id', $colorAttribute->id)->first();
     $materialValue = AttributeValue::query()->where('product_id', $product->id)->where('attribute_id', $materialAttribute->id)->first();
 
     expect($colorValue?->value_text)->toBe('red')
         ->and($materialValue?->value_text)->toBe('cotton');
 
-    // Switch back to A on the Edit page...
-    Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
-        ->fillForm(['attribute_set_id' => $setA->id])
-        ->call('save')
-        ->assertHasNoFormErrors();
-
-    // ...and the Attributes page (now set-A-scoped again) re-hydrates A's
-    // original, untouched value.
-    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+    // Re-visiting set A's page afterwards still shows only its own value,
+    // untouched by set B's save.
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey(), 'attributeSet' => $setA->getRouteKey()])
         ->assertSchemaStateSet(function (array $state): void {
             expect($state['attribute_values']['color'])->toBe('red');
         });
@@ -380,13 +356,10 @@ it('silently skips an attribute_values code that does not belong to the current 
     $attribute = Attribute::factory()->create(['catalog_id' => $catalog->id, 'code' => 'color']);
     $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
     $attributeSet->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => false]);
-    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $product->attributeSets()->attach($attributeSet->id);
 
-    // "nonexistent_code" belongs to no Attribute on this (or any)
-    // AttributeSet — persistAttributeValues()'s `if (! $attribute)
-    // continue;` guard must skip it rather than erroring, while a real
-    // code on the current set still saves correctly in the same submit.
-    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey(), 'attributeSet' => $attributeSet->getRouteKey()])
         ->fillForm([
             'attribute_values' => ['color' => 'red', 'nonexistent_code' => 'tampered'],
         ])
@@ -559,55 +532,16 @@ it('shows an Images sub-navigation tab on the product Edit page, alongside Relat
     expect($subNavigationLabels)->toContain('Images', 'Related Products');
 });
 
-it('hides the Attributes sub-navigation entry when no attribute set is assigned', function () {
-    $catalog = actingAsCatalogUser();
-    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => null]);
-
-    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
-    $test->assertOk();
-
-    $subNavigationLabels = collect(
-        ProductResource::getRecordSubNavigation($test->instance())
-    )->map(fn ($item) => $item->getLabel())->all();
-
-    expect($subNavigationLabels)->not->toContain('Attributes');
-});
-
-it('labels the Attributes sub-navigation entry with the assigned attribute set\'s own name', function () {
-    $catalog = actingAsCatalogUser();
-    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Clothing']);
-    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
-
-    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
-    $test->assertOk();
-
-    $subNavigationLabels = collect(
-        ProductResource::getRecordSubNavigation($test->instance())
-    )->map(fn ($item) => $item->getLabel())->all();
-
-    expect($subNavigationLabels)->toContain('Clothing')
-        ->and($subNavigationLabels)->not->toContain('Attributes');
-});
-
 it('titles the Attributes page with the assigned attribute set\'s own name', function () {
     $catalog = actingAsCatalogUser();
     $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Clothing']);
-    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => $attributeSet->id]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $product->attributeSets()->attach($attributeSet->id);
 
-    $test = Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()]);
+    $test = Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey(), 'attributeSet' => $attributeSet->getRouteKey()]);
 
     expect($test->instance()->getTitle())->toBe('Clothing')
         ->and($test->instance()->getBreadcrumb())->toBe('Clothing');
-});
-
-it('falls back to a generic title and breadcrumb on the Attributes page when no attribute set is assigned', function () {
-    $catalog = actingAsCatalogUser();
-    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => null]);
-
-    $test = Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()]);
-
-    expect($test->instance()->getTitle())->toBe('Attributes')
-        ->and($test->instance()->getBreadcrumb())->toBe('Attributes');
 });
 
 it('does not write attribute values to a product in a different catalog when the attributes page form is submitted directly', function () {
@@ -615,11 +549,12 @@ it('does not write attribute values to a product in a different catalog when the
     $attributeSet = AttributeSet::factory()->create(['catalog_id' => $otherCatalog->id]);
     $attribute = Attribute::factory()->create(['catalog_id' => $otherCatalog->id, 'code' => 'color']);
     $attributeSet->attributes()->attach($attribute->id, ['position' => 0, 'is_required' => false]);
-    $product = Product::factory()->create(['catalog_id' => $otherCatalog->id, 'attribute_set_id' => $attributeSet->id]);
+    $product = Product::factory()->create(['catalog_id' => $otherCatalog->id]);
+    $product->attributeSets()->attach($attributeSet->id);
 
     actingAsCatalogUser();
 
-    expect(fn () => Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
+    expect(fn () => Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey(), 'attributeSet' => $attributeSet->getRouteKey()])
         ->fillForm(['attribute_values' => ['color' => 'intrusion']])
         ->call('save'))
         ->toThrow(ModelNotFoundException::class);
@@ -627,10 +562,74 @@ it('does not write attribute values to a product in a different catalog when the
     $this->assertDatabaseMissing('attribute_values', ['product_id' => $product->id, 'value_text' => 'intrusion']);
 });
 
-it('loads the Attributes page without error when no attribute set is assigned', function () {
+it('adds one sub-navigation entry per attribute set attached to the product', function () {
     $catalog = actingAsCatalogUser();
-    $product = Product::factory()->create(['catalog_id' => $catalog->id, 'attribute_set_id' => null]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
 
-    Livewire::test(ManageProductAttributes::class, ['record' => $product->getRouteKey()])
-        ->assertOk();
+    $baselineCount = count(ProductResource::getRecordSubNavigation(
+        Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])->instance()
+    ));
+
+    $setA = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Color Set']);
+    $setB = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'Material Set']);
+    $product->attributeSets()->attach([$setA->id, $setB->id]);
+
+    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
+    $test->assertOk();
+
+    $subNavigationLabels = collect(
+        ProductResource::getRecordSubNavigation($test->instance())
+    )->map(fn ($item) => $item->getLabel())->all();
+
+    expect($subNavigationLabels)->toContain('Color Set', 'Material Set')
+        ->and($subNavigationLabels)->toHaveCount($baselineCount + 2);
+});
+
+it('throws a not found exception when visiting the Attributes page for a set not attached to this product', function () {
+    $catalog = actingAsCatalogUser();
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+    // $attributeSet is deliberately never attached to $product.
+
+    expect(fn () => Livewire::test(ManageProductAttributes::class, [
+        'record' => $product->getRouteKey(),
+        'attributeSet' => $attributeSet->getRouteKey(),
+    ]))->toThrow(ModelNotFoundException::class);
+});
+
+it('persists multiple attribute set assignment on create', function () {
+    $catalog = actingAsCatalogUser();
+    $setA = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $setB = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+
+    Livewire::test(CreateProduct::class)
+        ->fillForm([
+            'sku' => 'SKU-1',
+            'name' => 'Boots',
+            'slug' => 'boots',
+            'status' => 'draft',
+            'attributeSets' => [$setA->id, $setB->id],
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $product = Product::query()->where('sku', 'SKU-1')->first();
+
+    expect($product->attributeSets()->pluck('attribute_sets.id')->sort()->values()->all())
+        ->toBe([$setA->id, $setB->id]);
+});
+
+it('replaces attribute set assignment on edit rather than merging it', function () {
+    $catalog = actingAsCatalogUser();
+    $setA = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $setB = AttributeSet::factory()->create(['catalog_id' => $catalog->id]);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $product->attributeSets()->attach($setA->id);
+
+    Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()])
+        ->fillForm(['attributeSets' => [$setB->id]])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($product->attributeSets()->pluck('attribute_sets.id')->all())->toBe([$setB->id]);
 });
