@@ -1,0 +1,14 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../app-modules/categories/src/Filament/**/*';
+@source '../../../../app-modules/attributes/src/Filament/**/*';
+@source '../../../../app-modules/products/src/Filament/**/*';
+@source '../../../../app-modules/channels/src/Filament/**/*';
+
+@theme {
+    --radius-sm: 12px;
+    --radius-md: 16px;
+    --radius-lg: 20px;
+    --radius-xl: 24px;
+}
