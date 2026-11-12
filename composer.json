@@ -22,6 +22,7 @@
         "modules/products": "*",
         "modules/relations": "*",
         "modules/users": "*",
+        "socialiteproviders/openidconnect": "^1.0",
         "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-medialibrary": "^11.0",
         "spatie/laravel-permission": "^8.4"
