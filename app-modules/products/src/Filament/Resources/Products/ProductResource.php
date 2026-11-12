@@ -251,7 +251,7 @@ class ProductResource extends Resource
 
         $attributeSetItems = $record->attributeSets
             ->sortBy('name')
-            ->map(fn (AttributeSet $attributeSet): NavigationItem => NavigationItem::make($attributeSet->name)
+            ->map(fn (AttributeSet $attributeSet): NavigationItem => NavigationItem::make(Str::title($attributeSet->name).' Attributes')
                 ->icon(Heroicon::OutlinedRectangleGroup)
                 ->url(ManageProductAttributes::getUrl(['record' => $record, 'attributeSet' => $attributeSet]))
                 ->isActiveWhen(fn (): bool => (string) original_request()->route('attributeSet') === (string) $attributeSet->getKey()))

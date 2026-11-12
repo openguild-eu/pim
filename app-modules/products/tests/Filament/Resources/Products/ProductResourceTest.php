@@ -628,8 +628,25 @@ it('adds one sub-navigation entry per attribute set attached to the product', fu
         ProductResource::getRecordSubNavigation($test->instance())
     )->map(fn ($item) => $item->getLabel())->all();
 
-    expect($subNavigationLabels)->toContain('Color Set', 'Material Set')
+    expect($subNavigationLabels)->toContain('Color Set Attributes', 'Material Set Attributes')
         ->and($subNavigationLabels)->toHaveCount($baselineCount + 2);
+});
+
+it('title-cases the attribute set name before appending Attributes to the sidebar label', function () {
+    $catalog = actingAsCatalogUser();
+    $attributeSet = AttributeSet::factory()->create(['catalog_id' => $catalog->id, 'name' => 'extra']);
+    $product = Product::factory()->create(['catalog_id' => $catalog->id]);
+    $product->attributeSets()->attach($attributeSet->id);
+
+    $test = Livewire::test(EditProduct::class, ['record' => $product->getRouteKey()]);
+    $test->assertOk();
+
+    $subNavigationLabels = collect(
+        ProductResource::getRecordSubNavigation($test->instance())
+    )->map(fn ($item) => $item->getLabel())->all();
+
+    expect($subNavigationLabels)->toContain('Extra Attributes')
+        ->and($subNavigationLabels)->not->toContain('extra Attributes', 'extra');
 });
 
 it('throws a not found exception when visiting the Attributes page for a set not attached to this product', function () {
