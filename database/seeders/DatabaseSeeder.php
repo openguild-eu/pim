@@ -13,6 +13,7 @@ use Modules\Products\Database\Seeders\ProductsSeeder;
 use Modules\Relations\Database\Seeders\RelationsSeeder;
 use Modules\Users\Database\Seeders\UsersSeeder;
 use Modules\Users\Models\User;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -55,9 +56,10 @@ class DatabaseSeeder extends Seeder
 
             $user->catalogs()->attach($catalog);
 
-            Role::create(['name' => 'admin', 'subdomain_id' => $subdomain->id]);
+            $role = Role::create(['name' => 'admin', 'subdomain_id' => $subdomain->id]);
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($subdomain->id);
+            $role->givePermissionTo(Permission::findOrCreate('manage sso settings'));
             $user->assignRole('admin');
 
             return [$subdomain, $catalog, $user];

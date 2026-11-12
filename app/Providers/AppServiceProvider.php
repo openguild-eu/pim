@@ -5,8 +5,11 @@ namespace App\Providers;
 use App\Auth\SubdomainUserProvider;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Modules\Users\Models\User;
+use SocialiteProviders\Manager\SocialiteWasCalled;
+use SocialiteProviders\OpenIDConnect\Provider as OpenIDConnectProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,6 +33,10 @@ class AppServiceProvider extends ServiceProvider
     {
         Auth::provider('subdomain', function ($app, array $config) {
             return new SubdomainUserProvider($app['hash'], $config['model']);
+        });
+
+        Event::listen(function (SocialiteWasCalled $event): void {
+            $event->extendSocialite('openidconnect', OpenIDConnectProvider::class);
         });
     }
 }

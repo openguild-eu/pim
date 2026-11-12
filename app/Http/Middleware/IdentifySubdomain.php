@@ -35,7 +35,7 @@ class IdentifySubdomain
         // If accessing central domain, allow only specific routes
         if ($subdomain === $centralDomain || empty($subdomain)) {
             // Block all Filament routes on central domain
-            if ($request->is('login') || $request->is('logout') || str_starts_with($request->path(), 'filament')) {
+            if ($request->is('login') || $request->is('logout') || $request->is('sso/*') || str_starts_with($request->path(), 'filament')) {
                 abort(404);
             }
 
